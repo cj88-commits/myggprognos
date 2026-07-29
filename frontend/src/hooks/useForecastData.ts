@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
-import { getCells, getDaily, getHourly, getManifest, getPlaces } from "../lib/api";
-import { mapWithConcurrency } from "../lib/concurrency";
+import { getCells, getDaily, getHourly, getManifest, getPlaces, getSeriesShard } from "../lib/api";
+import { shardForCellId } from "../lib/sharding";
 import type { CellRecord, DailyRecord, HourlyRecord, Manifest, PlaceRecord } from "../types/forecast";
-
-const SERIES_FETCH_CONCURRENCY = 6;
 
 interface AsyncState<T> {
   data: T | null;
@@ -58,43 +56,30 @@ export interface LocationSeries {
   hourly: (HourlyRecord & { hourLabel: string; hourOffset: number })[];
 }
 
+// Fetches a single small sharded series file (series/<shard>.json.gz,
+// ~100-300KB for ~140 cells) instead of all 7 daily + 49 hourly full-grid
+// files (56 requests, 50-150MB at full-Sweden scale) just to chart one
+// cell -- see forecast/src/output.py::write_series_shards and
+// frontend/src/lib/sharding.ts.
 export function useLocationSeries(
   cellId: string | null,
   manifest: Manifest | null,
   refreshKey = 0
 ): AsyncState<LocationSeries> {
   return useAsync(async () => {
-    if (!cellId || !manifest) return { daily: [], hourly: [] };
+    if (!cellId || !manifest || !manifest.series_shard_count) return { daily: [], hourly: [] };
 
-    const dailyResults = await mapWithConcurrency(manifest.daily_files, SERIES_FETCH_CONCURRENCY, (path) =>
-      loadDailyByPath(path)
-    );
-    const daily = dailyResults
-      .map((records) => records.find((r) => r.cell_id === cellId))
-      .filter((r): r is DailyRecord => Boolean(r));
+    const shard = shardForCellId(cellId, manifest.series_shard_count);
+    const shardData = await getSeriesShard(shard);
+    const entry = shardData[cellId];
+    if (!entry) return { daily: [], hourly: [] };
 
-    const hourlyResults = await mapWithConcurrency(
-      manifest.hourly_files,
-      SERIES_FETCH_CONCURRENCY,
-      async (path, index) => {
-        const hourLabel = path.replace("hourly/", "").replace(".json.gz", "");
-        const records = await loadHourlyByPath(path);
-        const record = records.find((r) => r.cell_id === cellId);
-        return record ? { ...record, hourLabel, hourOffset: index } : null;
-      }
-    );
-    const hourly = hourlyResults.filter((r): r is HourlyRecord & { hourLabel: string; hourOffset: number } => Boolean(r));
+    const hourly = entry.hourly.map((record, index) => ({
+      ...record,
+      hourLabel: manifest.hourly_files[index]?.replace("hourly/", "").replace(".json.gz", "") ?? "",
+      hourOffset: index,
+    }));
 
-    return { daily, hourly };
+    return { daily: entry.daily, hourly };
   }, [cellId, manifest, refreshKey]);
-}
-
-async function loadDailyByPath(path: string): Promise<DailyRecord[]> {
-  const dateStr = path.replace("daily/", "").replace(".json.gz", "");
-  return getDaily(dateStr);
-}
-
-async function loadHourlyByPath(path: string): Promise<HourlyRecord[]> {
-  const hourLabel = path.replace("hourly/", "").replace(".json.gz", "");
-  return getHourly(hourLabel);
 }

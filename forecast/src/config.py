@@ -53,18 +53,21 @@ WEATHER_CACHE_DIR = Path(
     os.environ.get("WEATHER_CACHE_DIR", str(DATA_DIR / "cache" / "weather"))
 )
 
+# Risk is a 0-100 score (see forecast/src/model.py). Labels are emitted as
+# Swedish content data directly from the pipeline (not frontend UI chrome),
+# so no frontend i18n lookup is needed to display them.
 RISK_CATEGORIES = [
-    (0.0, 1.9, "very_low", "Very low"),
-    (2.0, 3.9, "low", "Low"),
-    (4.0, 5.9, "moderate", "Moderate"),
-    (6.0, 7.9, "high", "High"),
-    (8.0, 10.0, "very_high", "Very high"),
+    (0, 19, "very_low", "Mycket låg"),
+    (20, 39, "low", "Låg"),
+    (40, 59, "moderate", "Måttlig"),
+    (60, 79, "high", "Hög"),
+    (80, 100, "very_high", "Mycket hög"),
 ]
 
 CONFIDENCE_LABELS = [
-    (0.00, 0.39, "low", "Low"),
-    (0.40, 0.69, "medium", "Medium"),
-    (0.70, 1.00, "high", "High"),
+    (0, 39, "low", "Låg"),
+    (40, 69, "medium", "Medel"),
+    (70, 100, "high", "Hög"),
 ]
 
 DAYPARTS = {

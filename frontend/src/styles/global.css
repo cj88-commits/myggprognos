@@ -120,6 +120,31 @@ a {
     border-top: 1px solid var(--color-border);
     max-height: 46vh;
   }
+  .control-bar {
+    top: 0.5rem;
+    left: 0.5rem;
+    right: 0.5rem;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.15rem;
+  }
+  .control-group-search {
+    flex: 1 1 auto;
+    min-width: 160px;
+  }
+  .search-box {
+    min-width: 0;
+  }
+  .legend {
+    padding: 0.4rem 0.55rem;
+  }
+  .app-header {
+    padding: 0.5rem 0.75rem;
+  }
+  .app-title {
+    font-size: 1rem;
+  }
 }
 
 .control-bar {
@@ -164,15 +189,15 @@ a {
   color: var(--color-text);
   border-radius: 6px;
   padding: 0.3rem 0.45rem;
-  min-height: 34px;
+  min-height: 44px;
 }
 
 .icon-button {
   background: var(--color-surface-alt);
   border: 1px solid var(--color-border);
   border-radius: 8px;
-  min-width: 34px;
-  min-height: 34px;
+  min-width: 44px;
+  min-height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -239,6 +264,15 @@ a {
   padding: 0.5rem 0.65rem;
   font-size: 0.75rem;
   backdrop-filter: blur(4px);
+}
+
+.legend summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.legend summary::-webkit-details-marker {
+  display: none;
 }
 
 .legend-scale {
@@ -410,7 +444,7 @@ a {
   border-radius: 8px;
   padding: 0.5rem 0.8rem;
   font-weight: 600;
-  min-height: 40px;
+  min-height: 44px;
 }
 
 .button.primary {
@@ -467,8 +501,9 @@ a {
   border: 1px solid var(--color-border);
   background: var(--color-surface-alt);
   border-radius: 999px;
-  padding: 0.35rem 0.7rem;
+  padding: 0.5rem 0.8rem;
   font-size: 0.82rem;
+  min-height: 44px;
 }
 
 .option-chip[aria-pressed="true"] {
@@ -511,4 +546,86 @@ textarea.comment-field {
   border-radius: 8px;
   padding: 0.4rem 0.6rem;
   font-size: 0.78rem;
+}
+
+/* Loading states: skeleton placeholders so nothing is ever a blank screen
+   while the manifest/forecast/map/charts load (requirement 8). */
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+.skeleton {
+  background: var(--color-surface-alt);
+  border-radius: 8px;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+.skeleton-line {
+  height: 0.9rem;
+}
+
+.skeleton-title {
+  width: 55%;
+  height: 1.3rem;
+}
+
+.skeleton-subtitle {
+  width: 75%;
+}
+
+.skeleton-hero {
+  height: 4.5rem;
+  border-radius: var(--radius);
+}
+
+.skeleton-card {
+  height: 3.2rem;
+  border-radius: var(--radius);
+}
+
+.skeleton-block {
+  height: 8rem;
+  border-radius: var(--radius);
+}
+
+.skeleton-chart {
+  height: 160px;
+  border-radius: var(--radius);
+  background: var(--color-surface-alt);
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+.map-skeleton {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.map-skeleton-pulse {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  animation: map-skeleton-spin 0.9s linear infinite;
+}
+
+@keyframes map-skeleton-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton,
+  .skeleton-chart,
+  .map-skeleton-pulse {
+    animation: none;
+  }
 }

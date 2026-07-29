@@ -110,6 +110,46 @@ def write_locations_index(places: list[dict], out_dir: Path) -> Path:
     return path
 
 
+DEFAULT_SERIES_SHARD_COUNT = 128
+
+
+def shard_for_cell_id(cell_id: str, shard_count: int = DEFAULT_SERIES_SHARD_COUNT) -> int:
+    """Stable djb2 hash -> shard index. Deterministic across processes/
+    languages (unlike Python's randomized-per-process `hash()`), so the
+    frontend can independently compute the same shard for a cell_id without
+    needing a lookup table. Ported to frontend/src/lib/sharding.ts -- keep
+    both in sync."""
+    h = 5381
+    for ch in cell_id:
+        h = ((h * 33) + ord(ch)) & 0xFFFFFFFF
+    return h % shard_count
+
+
+def write_series_shards(
+    series_by_cell: dict[str, dict],
+    out_dir: Path,
+    shard_count: int = DEFAULT_SERIES_SHARD_COUNT,
+) -> list[str]:
+    """Write small, sharded per-cell time-series files
+    (series/<shard>.json.gz, each {cell_id: {"daily": [...], "hourly": [...]}}),
+    so the frontend's location panel can fetch one small file instead of all
+    7 daily + 49 hourly full-grid files just to chart a single cell. See
+    README "Location series data" and frontend/src/hooks/useForecastData.ts.
+    """
+    shards: dict[int, dict[str, dict]] = {i: {} for i in range(shard_count)}
+    for cell_id, series in series_by_cell.items():
+        shard = shard_for_cell_id(cell_id, shard_count)
+        shards[shard][cell_id] = series
+
+    written: list[str] = []
+    for shard_index, payload in shards.items():
+        rel_path = f"series/{shard_index}.json.gz"
+        path = out_dir / "series" / f"{shard_index}.json.gz"
+        _write_gzip_json_if_changed(path, payload)
+        written.append(rel_path)
+    return written
+
+
 def write_manifest(
     out_dir: Path,
     generated_at: str,
@@ -123,6 +163,8 @@ def write_manifest(
     model_version: str = MODEL_VERSION,
     activities: dict[str, float] | None = None,
     warnings: list[str] | None = None,
+    series_files: list[str] | None = None,
+    series_shard_count: int = DEFAULT_SERIES_SHARD_COUNT,
 ) -> Path:
     manifest = {
         "generated_at": generated_at,
@@ -136,6 +178,8 @@ def write_manifest(
         "hourly_files": hourly_files,
         "activities": activities or {},
         "warnings": warnings or [],
+        "series_files": series_files or [],
+        "series_shard_count": series_shard_count,
     }
     path = out_dir / "manifest.json"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -190,14 +234,14 @@ def run_sanity_checks(
             missing = required_fields - record.keys()
             if missing:
                 raise OutputValidationError(f"Daily record for {date_str} missing fields: {missing}")
-            if not (0.0 <= record["risk"] <= 10.0):
-                raise OutputValidationError(f"Risk {record['risk']} out of [0,10] for {record['cell_id']} on {date_str}")
-            if not (0.0 <= record["confidence"] <= 1.0):
-                raise OutputValidationError(f"Confidence {record['confidence']} out of [0,1] for {record['cell_id']} on {date_str}")
+            if not (0.0 <= record["risk"] <= 100.0):
+                raise OutputValidationError(f"Risk {record['risk']} out of [0,100] for {record['cell_id']} on {date_str}")
+            if not (0.0 <= record["confidence"] <= 100.0):
+                raise OutputValidationError(f"Confidence {record['confidence']} out of [0,100] for {record['cell_id']} on {date_str}")
             for component in ("population_potential", "biting_activity", "exposure"):
-                if not (0.0 <= record[component] <= 10.0):
+                if not (0.0 <= record[component] <= 100.0):
                     raise OutputValidationError(
-                        f"{component} {record[component]} out of [0,10] for {record['cell_id']} on {date_str}"
+                        f"{component} {record[component]} out of [0,100] for {record['cell_id']} on {date_str}"
                     )
 
     return warnings

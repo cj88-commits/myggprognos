@@ -1,11 +1,23 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import type { DailyRecord, Manifest, ScoreFields } from "../types/forecast";
-import { confidenceLabel, finalRiskForActivity, formatScore, riskCategory } from "../lib/riskModel";
+import { confidenceCategory, finalRiskForActivity, formatScore, riskCategory } from "../lib/riskModel";
 import { computeAdjustedRisk } from "../lib/reportAdjustment";
 import { getReportSummary, isReportingConfigured, type ReportSummary } from "../lib/reportsApi";
 import type { LocationSeries } from "../hooks/useForecastData";
-import { SevenDayChart, HourlyChart } from "./RiskCharts";
+import { useI18n } from "../i18n";
+import type { I18nKey } from "../i18n/types";
 import { ReportForm } from "./ReportForm";
+
+// recharts is a sizeable dependency (see vite.config.ts manualChunks) --
+// deferring its import until a chart is actually about to render (rather
+// than eagerly at LocationPanel module load) keeps it out of the initial
+// bundle/network path entirely for users who never open a location.
+const SevenDayChart = lazy(() => import("./RiskCharts").then((m) => ({ default: m.SevenDayChart })));
+const HourlyChart = lazy(() => import("./RiskCharts").then((m) => ({ default: m.HourlyChart })));
+
+function ChartSkeleton() {
+  return <div className="skeleton skeleton-chart" aria-hidden="true" />;
+}
 
 export interface LocationPanelProps {
   placeName: string;
@@ -33,6 +45,22 @@ function SubscoreCard({ label, value }: { label: string; value: number }) {
   );
 }
 
+function PanelSkeleton() {
+  return (
+    <div className="panel-content" aria-hidden="true">
+      <div className="skeleton skeleton-line skeleton-title" />
+      <div className="skeleton skeleton-line skeleton-subtitle" />
+      <div className="skeleton skeleton-hero" />
+      <div className="subscore-grid">
+        <div className="skeleton skeleton-card" />
+        <div className="skeleton skeleton-card" />
+        <div className="skeleton skeleton-card" />
+      </div>
+      <div className="skeleton skeleton-block" />
+    </div>
+  );
+}
+
 export function LocationPanel({
   placeName,
   latitude,
@@ -49,6 +77,7 @@ export function LocationPanel({
   onShare,
   shareCopied,
 }: LocationPanelProps) {
+  const { t } = useI18n();
   const [reportOpen, setReportOpen] = useState(false);
   const [reportSummary, setReportSummary] = useState<ReportSummary | null>(null);
   const [justSubmitted, setJustSubmitted] = useState(false);
@@ -66,17 +95,13 @@ export function LocationPanel({
   }, [cellId, justSubmitted]);
 
   if (loading && !activeRecord) {
-    return (
-      <div className="panel-content">
-        <p>Loading forecast…</p>
-      </div>
-    );
+    return <PanelSkeleton />;
   }
 
   if (error) {
     return (
       <div className="panel-content">
-        <p role="alert">Could not load forecast data: {error}</p>
+        <p role="alert">{t("panel.loadError", { error })}</p>
       </div>
     );
   }
@@ -84,7 +109,7 @@ export function LocationPanel({
   if (!activeRecord) {
     return (
       <div className="panel-empty">
-        <p>Select a location on the map, search for a place, or use your current location to see mosquito risk.</p>
+        <p>{t("panel.empty")}</p>
       </div>
     );
   }
@@ -97,7 +122,9 @@ export function LocationPanel({
     activityMultiplier
   );
   const category = riskCategory(adjustedFinalRisk);
-  const confLabel = confidenceLabel(activeRecord.confidence);
+  const categoryLabel = t(`risk.category.${category.key}` as I18nKey);
+  const confCategory = confidenceCategory(activeRecord.confidence);
+  const confLabel = t(`confidence.${confCategory}` as I18nKey);
 
   const reportAdjustment = computeAdjustedRisk(adjustedFinalRisk, reportSummary);
 
@@ -117,43 +144,46 @@ export function LocationPanel({
         <div>
           <span className="risk-badge" style={{ color: category.color }}>
             <span className="dot" aria-hidden="true" />
-            {category.label} risk
+            {t("panel.riskLabel", { category: categoryLabel })}
           </span>
           <div style={{ fontSize: "0.78rem", color: "var(--color-text-muted)", marginTop: "0.3rem" }}>
-            Activity-adjusted for <strong>{activity.replace("_", " ")}</strong>
+            {t("panel.activityAdjusted", { activity: t(`activity.${activity}` as I18nKey) })}
           </div>
         </div>
       </div>
 
       {reportAdjustment.applied && (
         <p style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
-          Model estimate: {formatScore(reportAdjustment.modelRisk)}. Adjusted using {reportSummary?.report_count}{" "}
-          recent nearby reports: <strong>{formatScore(reportAdjustment.adjustedRisk)}</strong> (report weight{" "}
-          {Math.round(reportAdjustment.weight * 100)}%).
+          {t("panel.modelEstimate", {
+            model: formatScore(reportAdjustment.modelRisk),
+            count: reportSummary?.report_count ?? 0,
+            adjusted: formatScore(reportAdjustment.adjustedRisk),
+            weight: Math.round(reportAdjustment.weight * 100),
+          })}
         </p>
       )}
 
       <div className="subscore-grid">
-        <SubscoreCard label="Population" value={activeRecord.population_potential} />
-        <SubscoreCard label="Activity" value={activeRecord.biting_activity} />
-        <SubscoreCard label="Exposure" value={activeRecord.exposure} />
+        <SubscoreCard label={t("panel.population")} value={activeRecord.population_potential} />
+        <SubscoreCard label={t("panel.activity")} value={activeRecord.biting_activity} />
+        <SubscoreCard label={t("panel.exposure")} value={activeRecord.exposure} />
       </div>
 
       <div>
-        <div className="section-title">Confidence</div>
+        <div className="section-title">{t("panel.confidenceTitle")}</div>
         <div className="confidence-row">
           <div className="confidence-bar">
-            <div style={{ width: `${Math.round(activeRecord.confidence * 100)}%` }} />
+            <div style={{ width: `${Math.round(activeRecord.confidence)}%` }} />
           </div>
           <span>
-            {confLabel} ({Math.round(activeRecord.confidence * 100)}%)
+            {confLabel} ({Math.round(activeRecord.confidence)}%)
           </span>
         </div>
       </div>
 
       {activeDailyRecord && (
         <div>
-          <div className="section-title">Why this forecast</div>
+          <div className="section-title">{t("panel.whyTitle")}</div>
           <p style={{ margin: 0, fontSize: "0.9rem" }}>{activeDailyRecord.explanation.summary}</p>
           <ul className="factor-list">
             {activeDailyRecord.explanation.positive_factors.map((f) => (
@@ -168,39 +198,40 @@ export function LocationPanel({
             ))}
           </ul>
           <p style={{ fontSize: "0.78rem", color: "var(--color-text-muted)", marginTop: "0.4rem" }}>
-            Peak activity expected in the <strong>{activeDailyRecord.peak_period}</strong>.
+            {t("panel.peakPeriod", { period: t(`daypart.${activeDailyRecord.peak_period}` as I18nKey) })}
           </p>
         </div>
       )}
 
       {series && series.daily.length > 0 && (
         <div>
-          <div className="section-title">Next 7 days</div>
-          <SevenDayChart daily={series.daily} activityMultiplier={activityMultiplier} />
+          <div className="section-title">{t("panel.next7days")}</div>
+          <Suspense fallback={<ChartSkeleton />}>
+            <SevenDayChart daily={series.daily} activityMultiplier={activityMultiplier} />
+          </Suspense>
         </div>
       )}
 
       {series && series.hourly.length > 0 && (
         <div>
-          <div className="section-title">Next 48 hours</div>
-          <HourlyChart hourly={series.hourly} activityMultiplier={activityMultiplier} />
+          <div className="section-title">{t("panel.next48h")}</div>
+          <Suspense fallback={<ChartSkeleton />}>
+            <HourlyChart hourly={series.hourly} activityMultiplier={activityMultiplier} />
+          </Suspense>
         </div>
       )}
 
       <div className="button-row">
         <button type="button" className="button primary" onClick={() => setReportOpen(true)}>
-          Report mosquitoes here
+          {t("panel.reportButton")}
         </button>
         <button type="button" className="button" onClick={onShare}>
-          {shareCopied ? "Link copied!" : "Share this view"}
+          {shareCopied ? t("panel.shareCopied") : t("panel.shareButton")}
         </button>
       </div>
 
       {!isReportingConfigured() && (
-        <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
-          Reporting is running in offline demo mode; submissions won&apos;t be saved until the Worker API is
-          configured (see README).
-        </p>
+        <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>{t("panel.offlineDemo")}</p>
       )}
 
       {reportOpen && cellId && (

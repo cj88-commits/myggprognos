@@ -44,12 +44,12 @@ def test_bell_curve_peaks_at_optimum():
 
 def test_risk_category_boundaries():
     assert risk_category(0.0)[0] == "very_low"
-    assert risk_category(1.9)[0] == "very_low"
-    assert risk_category(2.0)[0] == "low"
-    assert risk_category(5.9)[0] == "moderate"
-    assert risk_category(6.0)[0] == "high"
-    assert risk_category(8.0)[0] == "very_high"
-    assert risk_category(10.0)[0] == "very_high"
+    assert risk_category(19.0)[0] == "very_low"
+    assert risk_category(20.0)[0] == "low"
+    assert risk_category(59.0)[0] == "moderate"
+    assert risk_category(60.0)[0] == "high"
+    assert risk_category(80.0)[0] == "very_high"
+    assert risk_category(100.0)[0] == "very_high"
 
 
 def _features_at(sample_static, synthetic_weather, hour: int, model_config):
@@ -57,17 +57,19 @@ def _features_at(sample_static, synthetic_weather, hour: int, model_config):
     return compute_features(sample_static, synthetic_weather, target, model_config.development_base_temperature_c)
 
 
-def test_population_potential_between_0_and_10(sample_static, synthetic_weather, model_config):
+def test_population_potential_between_0_and_100(sample_static, synthetic_weather, model_config):
     features = _features_at(sample_static, synthetic_weather, 14, model_config)
     value, terms = compute_population_potential(features, model_config)
-    assert 0.0 <= value <= 10.0
-    assert set(terms) == {"temperature", "rainfall", "moisture", "wetland", "forest", "season", "snowmelt"}
+    assert 0.0 <= value <= 100.0
+    assert set(terms) == {
+        "temperature", "rainfall", "moisture", "wetland", "forest", "season", "snowmelt", "standing_water",
+    }
 
 
-def test_biting_activity_between_0_and_10(sample_static, synthetic_weather, model_config):
+def test_biting_activity_between_0_and_100(sample_static, synthetic_weather, model_config):
     features = _features_at(sample_static, synthetic_weather, 14, model_config)
     value, terms = compute_biting_activity(features, model_config)
-    assert 0.0 <= value <= 10.0
+    assert 0.0 <= value <= 100.0
 
 
 def test_wind_strongly_suppresses_biting_activity(sample_static, synthetic_weather, model_config):
@@ -106,23 +108,23 @@ def test_active_rain_suppresses_biting_activity(sample_static, synthetic_weather
     assert rainy_activity < dry_activity
 
 
-def test_exposure_between_0_and_10_and_activity_profile_changes_it(sample_static, synthetic_weather, model_config):
+def test_exposure_between_0_and_100_and_activity_profile_changes_it(sample_static, synthetic_weather, model_config):
     features = _features_at(sample_static, synthetic_weather, 14, model_config)
     general, _ = compute_exposure(features, model_config, activity_multiplier=1.0)
     camping, _ = compute_exposure(features, model_config, activity_multiplier=1.35)
-    assert 0.0 <= general <= 10.0
-    assert 0.0 <= camping <= 10.0
+    assert 0.0 <= general <= 100.0
+    assert 0.0 <= camping <= 100.0
     assert camping >= general
 
 
-def test_final_risk_is_bounded_0_to_10(sample_static, synthetic_weather, model_config):
+def test_final_risk_is_bounded_0_to_100(sample_static, synthetic_weather, model_config):
     for hour in range(0, 24, 3):
         features = _features_at(sample_static, synthetic_weather, hour, model_config)
         result = compute_score(features, model_config, "general")
-        assert 0.0 <= result.final_risk <= 10.0
-        assert 0.0 <= result.population_potential <= 10.0
-        assert 0.0 <= result.biting_activity <= 10.0
-        assert 0.0 <= result.exposure <= 10.0
+        assert 0.0 <= result.final_risk <= 100.0
+        assert 0.0 <= result.population_potential <= 100.0
+        assert 0.0 <= result.biting_activity <= 100.0
+        assert 0.0 <= result.exposure <= 100.0
 
 
 def test_final_risk_is_zero_when_all_components_are_zero(sample_static, synthetic_weather, model_config):
@@ -133,7 +135,7 @@ def test_final_risk_is_zero_when_all_components_are_zero(sample_static, syntheti
         "wind_speed_current_ms": 30.0,
     })
     result = compute_score(zeroed, model_config, "general")
-    assert result.biting_activity < 1.0
+    assert result.biting_activity < 10.0
 
 
 def test_daylight_hours_longer_in_summer_than_winter():

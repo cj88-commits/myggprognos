@@ -69,8 +69,8 @@ export function validateReportInput(body: unknown): ValidationResult {
     }
   }
 
-  if (b.forecast_score !== undefined && (!isFiniteNumber(b.forecast_score) || b.forecast_score < 0 || b.forecast_score > 10)) {
-    errors.push("forecast_score must be a number between 0 and 10");
+  if (b.forecast_score !== undefined && (!isFiniteNumber(b.forecast_score) || b.forecast_score < 0 || b.forecast_score > 100)) {
+    errors.push("forecast_score must be a number between 0 and 100");
   }
   if (b.model_version !== undefined && (typeof b.model_version !== "string" || b.model_version.length > 32)) {
     errors.push("model_version must be a short string");

@@ -55,7 +55,7 @@ def test_representative_locations_all_produce_valid_scores(model_config):
     assert set(scores) == expected_ids
 
     for cell_id, score in scores.items():
-        assert 0.0 <= score.final_risk <= 10.0, f"{cell_id} risk out of range"
+        assert 0.0 <= score.final_risk <= 100.0, f"{cell_id} risk out of range"
 
 
 def test_forested_location_has_higher_population_potential_than_dense_urban(model_config):

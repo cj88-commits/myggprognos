@@ -22,7 +22,7 @@ describe("validateReportInput", () => {
       activity: "Camping",
       repellent_used: true,
       comment: "Lots of mosquitoes near the lake this evening.",
-      forecast_score: 7.2,
+      forecast_score: 72,
       model_version: "0.1.0",
     });
     expect(result.ok).toBe(true);
@@ -65,7 +65,7 @@ describe("validateReportInput", () => {
   });
 
   it("rejects an out-of-range forecast_score", () => {
-    expect(validateReportInput({ ...validBody, forecast_score: 11 }).ok).toBe(false);
+    expect(validateReportInput({ ...validBody, forecast_score: 150 }).ok).toBe(false);
     expect(validateReportInput({ ...validBody, forecast_score: -1 }).ok).toBe(false);
   });
 });

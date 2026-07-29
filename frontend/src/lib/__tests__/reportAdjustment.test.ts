@@ -16,10 +16,10 @@ describe("recommendedReportWeight", () => {
 });
 
 describe("severityToRiskScale", () => {
-  it("maps 0-4 severity onto the 0-10 risk scale", () => {
+  it("maps 0-4 severity onto the 0-100 risk scale", () => {
     expect(severityToRiskScale(0)).toBe(0);
-    expect(severityToRiskScale(4)).toBe(10);
-    expect(severityToRiskScale(2)).toBe(5);
+    expect(severityToRiskScale(4)).toBe(100);
+    expect(severityToRiskScale(2)).toBe(50);
   });
 });
 
@@ -36,26 +36,26 @@ function summary(overrides: Partial<ReportSummary>): ReportSummary {
 
 describe("computeAdjustedRisk", () => {
   it("never adjusts with fewer than 3 reports", () => {
-    const result = computeAdjustedRisk(5.0, summary({ report_count: 2, average_severity: 4 }));
+    const result = computeAdjustedRisk(50.0, summary({ report_count: 2, average_severity: 4 }));
     expect(result.applied).toBe(false);
-    expect(result.adjustedRisk).toBe(5.0);
+    expect(result.adjustedRisk).toBe(50.0);
   });
 
   it("never adjusts with no reports at all", () => {
-    const result = computeAdjustedRisk(5.0, null);
+    const result = computeAdjustedRisk(50.0, null);
     expect(result.applied).toBe(false);
-    expect(result.adjustedRisk).toBe(5.0);
+    expect(result.adjustedRisk).toBe(50.0);
   });
 
   it("blends model and report risk within the capped weight", () => {
     const result = computeAdjustedRisk(
-      2.0,
+      20.0,
       summary({ report_count: 10, average_severity: 4, recommended_report_weight: 0.2 })
     );
     expect(result.applied).toBe(true);
     expect(result.weight).toBe(0.2);
-    // 2.0 * 0.8 + 10.0 * 0.2 = 3.6
-    expect(result.adjustedRisk).toBeCloseTo(3.6, 5);
+    // 20.0 * 0.8 + 100.0 * 0.2 = 36.0
+    expect(result.adjustedRisk).toBeCloseTo(36.0, 5);
   });
 
   it("caps the effective weight at 0.3 even if the server sends more", () => {

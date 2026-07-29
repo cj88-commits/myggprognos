@@ -69,6 +69,15 @@ export async function getPlaces(): Promise<PlaceRecord[]> {
   }
 }
 
+export interface SeriesShardEntry {
+  daily: DailyRecord[];
+  hourly: HourlyRecord[];
+}
+
+export async function getSeriesShard(shard: number): Promise<Record<string, SeriesShardEntry>> {
+  return fetchJsonGz<Record<string, SeriesShardEntry>>(`${DATA_BASE}/series/${shard}.json.gz`);
+}
+
 export function nearestCell(cells: CellRecord[], lat: number, lon: number): CellRecord | null {
   if (cells.length === 0) return null;
   let best = cells[0];

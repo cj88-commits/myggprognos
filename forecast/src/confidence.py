@@ -1,6 +1,6 @@
 """Forecast confidence scoring.
 
-Confidence (0-1) reflects how much the forecast should be trusted, not how
+Confidence (0-100) reflects how much the forecast should be trusted, not how
 severe the risk is. It is computed from forecast horizon, weather data
 completeness, static data quality, agreement between the three model
 components, and (optionally) nearby user report support -- see section 10
@@ -78,7 +78,7 @@ def compute_confidence(
     }
 
     total_weight = sum(weights.values()) or 1.0
-    confidence = (
+    confidence_fraction = (
         horizon_score * weights.get("horizon_weight", 0.30)
         + weather_completeness * weights.get("weather_completeness_weight", 0.20)
         + static_quality * weights.get("static_data_quality_weight", 0.15)
@@ -86,21 +86,21 @@ def compute_confidence(
         + report_support * weights.get("report_support_weight", 0.10)
         + fallback_penalty * weights.get("fallback_penalty_weight", 0.10)
     ) / total_weight
-    confidence = clamp(confidence, 0.0, 1.0)
+    confidence = clamp(confidence_fraction * 100.0, 0.0, 100.0)
 
     reasons = []
     if horizon_score < 0.6:
-        reasons.append("Forecast is several days out, so accuracy is lower.")
+        reasons.append("Prognosen gäller flera dagar framåt, vilket gör den mindre exakt.")
     if weather_completeness < 0.8:
-        reasons.append("Some weather data was missing for this location/time.")
+        reasons.append("En del väderdata saknades för denna plats/tid.")
     if static_data_is_placeholder:
-        reasons.append("Static terrain data is a placeholder approximation for this MVP.")
+        reasons.append("Statisk terrängdata är en platshållaruppskattning i denna betaversion.")
     if features.soil_moisture_is_fallback:
-        reasons.append("Soil moisture was estimated from rainfall/temperature, not directly measured.")
+        reasons.append("Markfuktighet uppskattades utifrån nederbörd/temperatur, inte uppmätt direkt.")
     if features.used_synthetic_weather:
-        reasons.append("Synthetic sample weather was used instead of a live forecast.")
+        reasons.append("Syntetisk exempeldata användes istället för en verklig väderprognos.")
     if agreement < 0.6:
-        reasons.append("Model components disagree more than usual for this location/time.")
+        reasons.append("Modellens delkomponenter är mer oense än vanligt för denna plats/tid.")
 
     label = CONFIDENCE_LABELS[0][3]
     for lo, hi, _key, lab in CONFIDENCE_LABELS:

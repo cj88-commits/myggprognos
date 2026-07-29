@@ -1,32 +1,1820 @@
 [
-  {"name": "Stockholm", "municipality": "Stockholm", "latitude": 59.3293, "longitude": 18.0686},
-  {"name": "Gothenburg", "municipality": "Goteborg", "latitude": 57.7089, "longitude": 11.9746},
-  {"name": "Malmo", "municipality": "Malmo", "latitude": 55.6050, "longitude": 13.0038},
-  {"name": "Uppsala", "municipality": "Uppsala", "latitude": 59.8586, "longitude": 17.6389},
-  {"name": "Vasteras", "municipality": "Vasteras", "latitude": 59.6099, "longitude": 16.5448},
-  {"name": "Orebro", "municipality": "Orebro", "latitude": 59.2741, "longitude": 15.2066},
-  {"name": "Linkoping", "municipality": "Linkoping", "latitude": 58.4108, "longitude": 15.6214},
-  {"name": "Helsingborg", "municipality": "Helsingborg", "latitude": 56.0465, "longitude": 12.6945},
-  {"name": "Jonkoping", "municipality": "Jonkoping", "latitude": 57.7826, "longitude": 14.1618},
-  {"name": "Norrkoping", "municipality": "Norrkoping", "latitude": 58.5877, "longitude": 16.1924},
-  {"name": "Lund", "municipality": "Lund", "latitude": 55.7047, "longitude": 13.1910},
-  {"name": "Umea", "municipality": "Umea", "latitude": 63.8258, "longitude": 20.2630},
-  {"name": "Gavle", "municipality": "Gavle", "latitude": 60.6749, "longitude": 17.1413},
-  {"name": "Boras", "municipality": "Boras", "latitude": 57.7210, "longitude": 12.9401},
-  {"name": "Sodertalje", "municipality": "Sodertalje", "latitude": 59.1955, "longitude": 17.6252},
-  {"name": "Eskilstuna", "municipality": "Eskilstuna", "latitude": 59.3717, "longitude": 16.5090},
-  {"name": "Halmstad", "municipality": "Halmstad", "latitude": 56.6745, "longitude": 12.8578},
-  {"name": "Vaxjo", "municipality": "Vaxjo", "latitude": 56.8777, "longitude": 14.8091},
-  {"name": "Karlstad", "municipality": "Karlstad", "latitude": 59.3793, "longitude": 13.5036},
-  {"name": "Sundsvall", "municipality": "Sundsvall", "latitude": 62.3908, "longitude": 17.3069},
-  { "name": "Ostersund", "municipality": "Ostersund", "latitude": 63.1792, "longitude": 14.6357},
-  {"name": "Lulea", "municipality": "Lulea", "latitude": 65.5848, "longitude": 22.1567},
-  {"name": "Kiruna", "municipality": "Kiruna", "latitude": 67.8558, "longitude": 20.2253},
-  {"name": "Visby", "municipality": "Gotland", "latitude": 57.6348, "longitude": 18.2948},
-  {"name": "Karlskrona", "municipality": "Karlskrona", "latitude": 56.1612, "longitude": 15.5869},
-  {"name": "Kalmar", "municipality": "Kalmar", "latitude": 56.6634, "longitude": 16.3567},
-  {"name": "Falun", "municipality": "Falun", "latitude": 60.6065, "longitude": 15.6355},
-  {"name": "Skelleftea", "municipality": "Skelleftea", "latitude": 64.7507, "longitude": 20.9528},
-  {"name": "Trollhattan", "municipality": "Trollhattan", "latitude": 58.2837, "longitude": 12.2886},
-  {"name": "Nykoping", "municipality": "Nykoping", "latitude": 58.7529, "longitude": 17.0083}
+  {
+    "name": "Nödinge-Nol",
+    "municipality": "Ale",
+    "latitude": 57.925,
+    "longitude": 12.0869
+  },
+  {
+    "name": "Alingsås",
+    "municipality": "Alingsås",
+    "latitude": 57.9333,
+    "longitude": 12.5333
+  },
+  {
+    "name": "Alvesta",
+    "municipality": "Alvesta",
+    "latitude": 56.9,
+    "longitude": 14.55
+  },
+  {
+    "name": "Anderstorp",
+    "municipality": "Anderstorp",
+    "latitude": 57.2799,
+    "longitude": 13.6344
+  },
+  {
+    "name": "Aneby",
+    "municipality": "Aneby",
+    "latitude": 57.8333,
+    "longitude": 14.8
+  },
+  {
+    "name": "Arboga",
+    "municipality": "Arboga",
+    "latitude": 59.4,
+    "longitude": 15.8333
+  },
+  {
+    "name": "Arjeplog",
+    "municipality": "Arjeplog",
+    "latitude": 66.0333,
+    "longitude": 17.95
+  },
+  {
+    "name": "Arvidsjaur",
+    "municipality": "Arvidsjaur",
+    "latitude": 65.5833,
+    "longitude": 19.1167
+  },
+  {
+    "name": "Arvika",
+    "municipality": "Arvika",
+    "latitude": 59.65,
+    "longitude": 12.5833
+  },
+  {
+    "name": "Askersund",
+    "municipality": "Askersund",
+    "latitude": 58.8833,
+    "longitude": 14.9
+  },
+  {
+    "name": "Avesta",
+    "municipality": "Avesta",
+    "latitude": 60.1456,
+    "longitude": 16.1683
+  },
+  {
+    "name": "Bengtsfors",
+    "municipality": "Bengtsfors",
+    "latitude": 59.0333,
+    "longitude": 12.2167
+  },
+  {
+    "name": "Svenstavik",
+    "municipality": "Bergs",
+    "latitude": 62.7667,
+    "longitude": 14.45
+  },
+  {
+    "name": "Bjurholm",
+    "municipality": "Bjurholm",
+    "latitude": 63.9167,
+    "longitude": 19.2167
+  },
+  {
+    "name": "Bjuv",
+    "municipality": "Bjuv",
+    "latitude": 56.0833,
+    "longitude": 12.9167
+  },
+  {
+    "name": "Boden",
+    "municipality": "Boden",
+    "latitude": 65.8333,
+    "longitude": 21.7167
+  },
+  {
+    "name": "Bollebygd",
+    "municipality": "Bollebygd",
+    "latitude": 57.6667,
+    "longitude": 12.5667
+  },
+  {
+    "name": "Bollnäs",
+    "municipality": "Bollnäs",
+    "latitude": 61.35,
+    "longitude": 16.4
+  },
+  {
+    "name": "Borgholm",
+    "municipality": "Borgholm",
+    "latitude": 56.8781,
+    "longitude": 16.6617
+  },
+  {
+    "name": "Borlänge",
+    "municipality": "Borlänge",
+    "latitude": 60.4828,
+    "longitude": 15.4364
+  },
+  {
+    "name": "Borås",
+    "municipality": "Borås",
+    "latitude": 57.7167,
+    "longitude": 12.9333
+  },
+  {
+    "name": "Tumba",
+    "municipality": "Botkyrka",
+    "latitude": 59.2,
+    "longitude": 17.8333
+  },
+  {
+    "name": "Boxholm",
+    "municipality": "Boxholm",
+    "latitude": 58.1964,
+    "longitude": 15.0519
+  },
+  {
+    "name": "Bromölla",
+    "municipality": "Bromölla",
+    "latitude": 56.05,
+    "longitude": 14.4667
+  },
+  {
+    "name": "Bräcke",
+    "municipality": "Bräcke",
+    "latitude": 62.75,
+    "longitude": 15.4167
+  },
+  {
+    "name": "Arlöv",
+    "municipality": "Burlövs",
+    "latitude": 55.6333,
+    "longitude": 13.0667
+  },
+  {
+    "name": "Robertsfors",
+    "municipality": "Bygdeå",
+    "latitude": 64.192,
+    "longitude": 20.8495
+  },
+  {
+    "name": "Båstad",
+    "municipality": "Båstad",
+    "latitude": 56.4167,
+    "longitude": 12.8667
+  },
+  {
+    "name": "Ed",
+    "municipality": "Dals-Eds",
+    "latitude": 58.9167,
+    "longitude": 11.9167
+  },
+  {
+    "name": "Djursholm",
+    "municipality": "Danderyds",
+    "latitude": 59.4,
+    "longitude": 18.0833
+  },
+  {
+    "name": "Degerfors",
+    "municipality": "Degerfors",
+    "latitude": 59.2333,
+    "longitude": 14.4333
+  },
+  {
+    "name": "Dorotea",
+    "municipality": "Dorotea",
+    "latitude": 64.2667,
+    "longitude": 16.4167
+  },
+  {
+    "name": "Charlottenberg",
+    "municipality": "Eda",
+    "latitude": 59.8833,
+    "longitude": 12.2833
+  },
+  {
+    "name": "Ekerö",
+    "municipality": "Ekerö",
+    "latitude": 59.35,
+    "longitude": 17.6833
+  },
+  {
+    "name": "Eksjö",
+    "municipality": "Eksjö",
+    "latitude": 57.6667,
+    "longitude": 14.9667
+  },
+  {
+    "name": "Emmaboda",
+    "municipality": "Emmaboda",
+    "latitude": 56.6167,
+    "longitude": 15.55
+  },
+  {
+    "name": "Enköping",
+    "municipality": "Enköping",
+    "latitude": 59.6356,
+    "longitude": 17.0764
+  },
+  {
+    "name": "Eskilstuna",
+    "municipality": "Eskilstuna",
+    "latitude": 59.3706,
+    "longitude": 16.5128
+  },
+  {
+    "name": "Eslöv",
+    "municipality": "Eslöv",
+    "latitude": 55.8333,
+    "longitude": 13.3
+  },
+  {
+    "name": "Nossebro",
+    "municipality": "Essunga",
+    "latitude": 58.1833,
+    "longitude": 12.7167
+  },
+  {
+    "name": "Fagersta",
+    "municipality": "Fagersta",
+    "latitude": 60.0,
+    "longitude": 15.8167
+  },
+  {
+    "name": "Falkenberg",
+    "municipality": "Falkenberg",
+    "latitude": 56.9167,
+    "longitude": 12.5
+  },
+  {
+    "name": "Falköping",
+    "municipality": "Falköping",
+    "latitude": 58.1667,
+    "longitude": 13.55
+  },
+  {
+    "name": "Falun",
+    "municipality": "Falu",
+    "latitude": 60.6,
+    "longitude": 15.6333
+  },
+  {
+    "name": "Filipstad",
+    "municipality": "Filipstad",
+    "latitude": 59.7167,
+    "longitude": 14.1667
+  },
+  {
+    "name": "Finspång",
+    "municipality": "Finspång",
+    "latitude": 58.7092,
+    "longitude": 15.7869
+  },
+  {
+    "name": "Flen",
+    "municipality": "Flen",
+    "latitude": 59.0583,
+    "longitude": 16.5889
+  },
+  {
+    "name": "Västra Bispgården",
+    "municipality": "Fors",
+    "latitude": 63.0136,
+    "longitude": 16.6564
+  },
+  {
+    "name": "Forshaga",
+    "municipality": "Forshaga",
+    "latitude": 59.5333,
+    "longitude": 13.4667
+  },
+  {
+    "name": "Färgelanda",
+    "municipality": "Färgelanda",
+    "latitude": 58.5667,
+    "longitude": 11.9833
+  },
+  {
+    "name": "Djurås",
+    "municipality": "Gagnefs",
+    "latitude": 60.55,
+    "longitude": 15.1333
+  },
+  {
+    "name": "Gislaved",
+    "municipality": "Gislaved",
+    "latitude": 57.3,
+    "longitude": 13.5333
+  },
+  {
+    "name": "Gnesta",
+    "municipality": "Gnesta",
+    "latitude": 59.0475,
+    "longitude": 17.3122
+  },
+  {
+    "name": "Gnosjö",
+    "municipality": "Gnosjö",
+    "latitude": 57.3667,
+    "longitude": 13.7333
+  },
+  {
+    "name": "Visby",
+    "municipality": "Gotland",
+    "latitude": 57.6348,
+    "longitude": 18.2948
+  },
+  {
+    "name": "Grums",
+    "municipality": "Grums",
+    "latitude": 59.3517,
+    "longitude": 13.1114
+  },
+  {
+    "name": "Grästorp",
+    "municipality": "Grästorp",
+    "latitude": 58.3333,
+    "longitude": 12.6667
+  },
+  {
+    "name": "Hova",
+    "municipality": "Gullspångs",
+    "latitude": 58.9833,
+    "longitude": 14.1167
+  },
+  {
+    "name": "Gustav Adolfs",
+    "municipality": "Gustav Adolfs",
+    "latitude": 60.0689,
+    "longitude": 13.865
+  },
+  {
+    "name": "Gällivare",
+    "municipality": "Gällivare",
+    "latitude": 67.1333,
+    "longitude": 20.65
+  },
+  {
+    "name": "Gävle",
+    "municipality": "Gävle",
+    "latitude": 60.6667,
+    "longitude": 17.1667
+  },
+  {
+    "name": "Göteborg",
+    "municipality": "Göteborg",
+    "latitude": 57.7,
+    "longitude": 11.9333
+  },
+  {
+    "name": "Götene",
+    "municipality": "Götene",
+    "latitude": 58.5333,
+    "longitude": 13.4833
+  },
+  {
+    "name": "Habo",
+    "municipality": "Habo",
+    "latitude": 57.9167,
+    "longitude": 14.0667
+  },
+  {
+    "name": "Hagfors",
+    "municipality": "Hagfors",
+    "latitude": 60.0333,
+    "longitude": 13.65
+  },
+  {
+    "name": "Hallsberg",
+    "municipality": "Hallsberg",
+    "latitude": 59.0667,
+    "longitude": 15.1167
+  },
+  {
+    "name": "Hallstahammar",
+    "municipality": "Hallstahammar",
+    "latitude": 59.6167,
+    "longitude": 16.25
+  },
+  {
+    "name": "Halmstad",
+    "municipality": "Halmstad",
+    "latitude": 56.6667,
+    "longitude": 12.85
+  },
+  {
+    "name": "Skoghall",
+    "municipality": "Hammarö",
+    "latitude": 59.3333,
+    "longitude": 13.4333
+  },
+  {
+    "name": "Handen",
+    "municipality": "Haninge",
+    "latitude": 59.1667,
+    "longitude": 18.1333
+  },
+  {
+    "name": "Haparanda",
+    "municipality": "Haparanda",
+    "latitude": 65.8333,
+    "longitude": 24.1333
+  },
+  {
+    "name": "Heby",
+    "municipality": "Heby",
+    "latitude": 59.9333,
+    "longitude": 16.8833
+  },
+  {
+    "name": "Hedemora",
+    "municipality": "Hedemora",
+    "latitude": 60.2833,
+    "longitude": 15.9833
+  },
+  {
+    "name": "Helsingborg",
+    "municipality": "Helsingborg",
+    "latitude": 56.05,
+    "longitude": 12.7167
+  },
+  {
+    "name": "Herrljunga",
+    "municipality": "Herrljunga",
+    "latitude": 58.0833,
+    "longitude": 13.0333
+  },
+  {
+    "name": "Hjo",
+    "municipality": "Hjo",
+    "latitude": 58.3,
+    "longitude": 14.2833
+  },
+  {
+    "name": "Hofors",
+    "municipality": "Hofors",
+    "latitude": 60.55,
+    "longitude": 16.2833
+  },
+  {
+    "name": "Holmsund",
+    "municipality": "Holmsund",
+    "latitude": 63.7002,
+    "longitude": 20.3526
+  },
+  {
+    "name": "Huddinge centrum",
+    "municipality": "Huddinge",
+    "latitude": 59.2333,
+    "longitude": 17.9833
+  },
+  {
+    "name": "Hudiksvall",
+    "municipality": "Hudiksvall",
+    "latitude": 61.7333,
+    "longitude": 17.1167
+  },
+  {
+    "name": "Hultsfred",
+    "municipality": "Hultsfred",
+    "latitude": 57.4833,
+    "longitude": 15.8333
+  },
+  {
+    "name": "Hyltebruk",
+    "municipality": "Hylte",
+    "latitude": 57.0,
+    "longitude": 13.25
+  },
+  {
+    "name": "Hällefors",
+    "municipality": "Hällefors",
+    "latitude": 59.7667,
+    "longitude": 14.5167
+  },
+  {
+    "name": "Sveg",
+    "municipality": "Härjedalens",
+    "latitude": 62.0333,
+    "longitude": 14.35
+  },
+  {
+    "name": "Härnösand",
+    "municipality": "Härnösand",
+    "latitude": 62.6333,
+    "longitude": 17.9333
+  },
+  {
+    "name": "Mölnlycke",
+    "municipality": "Härryda",
+    "latitude": 57.6667,
+    "longitude": 12.1167
+  },
+  {
+    "name": "Hässleholm",
+    "municipality": "Hässleholm",
+    "latitude": 56.1667,
+    "longitude": 13.7667
+  },
+  {
+    "name": "Bålsta",
+    "municipality": "Håbo",
+    "latitude": 59.5678,
+    "longitude": 17.5297
+  },
+  {
+    "name": "Höganäs",
+    "municipality": "Höganäs",
+    "latitude": 56.2,
+    "longitude": 12.5667
+  },
+  {
+    "name": "Högsby",
+    "municipality": "Högsby",
+    "latitude": 57.1667,
+    "longitude": 16.0333
+  },
+  {
+    "name": "Hörby",
+    "municipality": "Hörby",
+    "latitude": 55.85,
+    "longitude": 13.65
+  },
+  {
+    "name": "Höör",
+    "municipality": "Höör",
+    "latitude": 55.9333,
+    "longitude": 13.55
+  },
+  {
+    "name": "Jokkmokk",
+    "municipality": "Jokkmokk",
+    "latitude": 66.6167,
+    "longitude": 19.8333
+  },
+  {
+    "name": "Jakobsberg",
+    "municipality": "Järfälla",
+    "latitude": 59.4333,
+    "longitude": 17.8333
+  },
+  {
+    "name": "Jönköping",
+    "municipality": "Jönköping",
+    "latitude": 57.7833,
+    "longitude": 14.2
+  },
+  {
+    "name": "Kalix",
+    "municipality": "Kalix",
+    "latitude": 65.85,
+    "longitude": 23.1667
+  },
+  {
+    "name": "Kalmar",
+    "municipality": "Kalmar",
+    "latitude": 56.6667,
+    "longitude": 16.3667
+  },
+  {
+    "name": "Karlsborg",
+    "municipality": "Karlsborg",
+    "latitude": 58.5333,
+    "longitude": 14.5167
+  },
+  {
+    "name": "Karlshamn",
+    "municipality": "Karlshamn",
+    "latitude": 56.1667,
+    "longitude": 14.85
+  },
+  {
+    "name": "Karlskoga",
+    "municipality": "Karlskoga",
+    "latitude": 59.325,
+    "longitude": 14.525
+  },
+  {
+    "name": "Karlskrona",
+    "municipality": "Karlskrona",
+    "latitude": 56.1833,
+    "longitude": 15.65
+  },
+  {
+    "name": "Karlstad",
+    "municipality": "Karlstad",
+    "latitude": 59.3833,
+    "longitude": 13.5333
+  },
+  {
+    "name": "Katrineholm",
+    "municipality": "Katrineholm",
+    "latitude": 58.9956,
+    "longitude": 16.2061
+  },
+  {
+    "name": "Kil",
+    "municipality": "Kil",
+    "latitude": 59.5,
+    "longitude": 13.3164
+  },
+  {
+    "name": "Kisa",
+    "municipality": "Kinda",
+    "latitude": 57.9892,
+    "longitude": 15.6272
+  },
+  {
+    "name": "Kiruna",
+    "municipality": "Kiruna",
+    "latitude": 67.8547,
+    "longitude": 20.2228
+  },
+  {
+    "name": "Klippan",
+    "municipality": "Klippan",
+    "latitude": 56.1333,
+    "longitude": 13.1333
+  },
+  {
+    "name": "Knivsta",
+    "municipality": "Knivsta",
+    "latitude": 59.7167,
+    "longitude": 17.8
+  },
+  {
+    "name": "Kramfors",
+    "municipality": "Kramfors",
+    "latitude": 62.9322,
+    "longitude": 17.7772
+  },
+  {
+    "name": "Kristianstad",
+    "municipality": "Kristianstad",
+    "latitude": 56.0333,
+    "longitude": 14.15
+  },
+  {
+    "name": "Kristinehamn",
+    "municipality": "Kristinehamn",
+    "latitude": 59.3,
+    "longitude": 14.1167
+  },
+  {
+    "name": "Krokom",
+    "municipality": "Krokom",
+    "latitude": 63.3167,
+    "longitude": 14.5
+  },
+  {
+    "name": "Kumla",
+    "municipality": "Kumla",
+    "latitude": 59.1167,
+    "longitude": 15.1333
+  },
+  {
+    "name": "Kungsbacka",
+    "municipality": "Kungsbacka",
+    "latitude": 57.4833,
+    "longitude": 12.0667
+  },
+  {
+    "name": "Kungsör",
+    "municipality": "Kungsör",
+    "latitude": 59.4167,
+    "longitude": 16.0833
+  },
+  {
+    "name": "Kungälv",
+    "municipality": "Kungälv",
+    "latitude": 57.8667,
+    "longitude": 11.9667
+  },
+  {
+    "name": "Kvidinge",
+    "municipality": "Kvidinge",
+    "latitude": 56.1336,
+    "longitude": 13.0543
+  },
+  {
+    "name": "Kävlinge",
+    "municipality": "Kävlinge",
+    "latitude": 55.8,
+    "longitude": 13.1167
+  },
+  {
+    "name": "Köping",
+    "municipality": "Köping",
+    "latitude": 59.5131,
+    "longitude": 15.9986
+  },
+  {
+    "name": "Laholm",
+    "municipality": "Laholm",
+    "latitude": 56.5167,
+    "longitude": 13.0333
+  },
+  {
+    "name": "Landskrona",
+    "municipality": "Landskrona",
+    "latitude": 55.8667,
+    "longitude": 12.85
+  },
+  {
+    "name": "Laxå",
+    "municipality": "Laxå",
+    "latitude": 58.9886,
+    "longitude": 14.6175
+  },
+  {
+    "name": "Fjugesta",
+    "municipality": "Lekebergs",
+    "latitude": 59.1667,
+    "longitude": 14.8667
+  },
+  {
+    "name": "Leksand",
+    "municipality": "Leksand",
+    "latitude": 60.7333,
+    "longitude": 15.0
+  },
+  {
+    "name": "Lerum",
+    "municipality": "Lerum",
+    "latitude": 57.7667,
+    "longitude": 12.3
+  },
+  {
+    "name": "Lessebo",
+    "municipality": "Lessebo",
+    "latitude": 56.75,
+    "longitude": 15.2667
+  },
+  {
+    "name": "Lidingö",
+    "municipality": "Lidingö",
+    "latitude": 59.363,
+    "longitude": 18.151
+  },
+  {
+    "name": "Lidköping",
+    "municipality": "Lidköping",
+    "latitude": 58.5,
+    "longitude": 13.1833
+  },
+  {
+    "name": "Lilla Edet",
+    "municipality": "Lilla Edet",
+    "latitude": 58.1333,
+    "longitude": 12.1333
+  },
+  {
+    "name": "Lindesberg",
+    "municipality": "Lindesberg",
+    "latitude": 59.5833,
+    "longitude": 15.25
+  },
+  {
+    "name": "Linköping",
+    "municipality": "Linköping",
+    "latitude": 58.4,
+    "longitude": 15.6167
+  },
+  {
+    "name": "Ljungby",
+    "municipality": "Ljungby",
+    "latitude": 56.8333,
+    "longitude": 13.9333
+  },
+  {
+    "name": "Ljusdal",
+    "municipality": "Ljusdal",
+    "latitude": 61.8333,
+    "longitude": 16.0833
+  },
+  {
+    "name": "Kopparberg",
+    "municipality": "Ljusnarsbergs",
+    "latitude": 59.8667,
+    "longitude": 14.9833
+  },
+  {
+    "name": "Lomma",
+    "municipality": "Lomma",
+    "latitude": 55.6667,
+    "longitude": 13.0833
+  },
+  {
+    "name": "Ludvika",
+    "municipality": "Ludvika",
+    "latitude": 60.1333,
+    "longitude": 15.1833
+  },
+  {
+    "name": "Luleå",
+    "municipality": "Luleå",
+    "latitude": 65.5844,
+    "longitude": 22.1539
+  },
+  {
+    "name": "Lund",
+    "municipality": "Lund",
+    "latitude": 55.7,
+    "longitude": 13.2
+  },
+  {
+    "name": "Lycksele",
+    "municipality": "Lycksele",
+    "latitude": 64.6,
+    "longitude": 18.6667
+  },
+  {
+    "name": "Lysekil",
+    "municipality": "Lysekil",
+    "latitude": 58.2833,
+    "longitude": 11.4333
+  },
+  {
+    "name": "Malmö",
+    "municipality": "Malmö",
+    "latitude": 55.565,
+    "longitude": 13.0186
+  },
+  {
+    "name": "Malung",
+    "municipality": "Malung-Sälens",
+    "latitude": 60.6833,
+    "longitude": 13.7333
+  },
+  {
+    "name": "Malå",
+    "municipality": "Malå",
+    "latitude": 65.1833,
+    "longitude": 18.75
+  },
+  {
+    "name": "Mariestad",
+    "municipality": "Mariestad",
+    "latitude": 58.7,
+    "longitude": 13.8167
+  },
+  {
+    "name": "Markaryd",
+    "municipality": "Markaryd",
+    "latitude": 56.4667,
+    "longitude": 13.6
+  },
+  {
+    "name": "Kinna",
+    "municipality": "Marks",
+    "latitude": 57.5167,
+    "longitude": 12.6833
+  },
+  {
+    "name": "Mellerud",
+    "municipality": "Mellerud",
+    "latitude": 58.7,
+    "longitude": 12.4667
+  },
+  {
+    "name": "Mjölby",
+    "municipality": "Mjölby",
+    "latitude": 58.325,
+    "longitude": 15.1306
+  },
+  {
+    "name": "Mora",
+    "municipality": "Mora",
+    "latitude": 61.0167,
+    "longitude": 14.5333
+  },
+  {
+    "name": "Motala",
+    "municipality": "Motala",
+    "latitude": 58.5364,
+    "longitude": 15.0375
+  },
+  {
+    "name": "Mullsjö",
+    "municipality": "Mullsjö",
+    "latitude": 57.9167,
+    "longitude": 13.8833
+  },
+  {
+    "name": "Munkedal",
+    "municipality": "Munkedal",
+    "latitude": 58.4833,
+    "longitude": 11.6833
+  },
+  {
+    "name": "Munkfors",
+    "municipality": "Munkfors",
+    "latitude": 59.8333,
+    "longitude": 13.5333
+  },
+  {
+    "name": "Mölndal",
+    "municipality": "Mölndal",
+    "latitude": 57.6542,
+    "longitude": 12.0192
+  },
+  {
+    "name": "Mönsterås",
+    "municipality": "Mönsterås",
+    "latitude": 57.0333,
+    "longitude": 16.45
+  },
+  {
+    "name": "Mörbylånga",
+    "municipality": "Mörbylånga",
+    "latitude": 56.5167,
+    "longitude": 16.3833
+  },
+  {
+    "name": "Nacka",
+    "municipality": "Nacka",
+    "latitude": 59.3167,
+    "longitude": 18.1667
+  },
+  {
+    "name": "Nora",
+    "municipality": "Nora",
+    "latitude": 59.5167,
+    "longitude": 15.0333
+  },
+  {
+    "name": "Norberg",
+    "municipality": "Norberg",
+    "latitude": 60.0833,
+    "longitude": 15.95
+  },
+  {
+    "name": "Bergsjö",
+    "municipality": "Nordanstigs",
+    "latitude": 61.9833,
+    "longitude": 17.0667
+  },
+  {
+    "name": "Nordmaling",
+    "municipality": "Nordmaling",
+    "latitude": 63.5667,
+    "longitude": 19.5
+  },
+  {
+    "name": "Norrköping",
+    "municipality": "Norrköping",
+    "latitude": 58.5919,
+    "longitude": 16.1856
+  },
+  {
+    "name": "Norrtälje",
+    "municipality": "Norrtälje",
+    "latitude": 59.7667,
+    "longitude": 18.7
+  },
+  {
+    "name": "Norsjö",
+    "municipality": "Norsjö",
+    "latitude": 64.9167,
+    "longitude": 19.4833
+  },
+  {
+    "name": "Nybro",
+    "municipality": "Nybro",
+    "latitude": 56.7333,
+    "longitude": 15.9
+  },
+  {
+    "name": "Nykvarn",
+    "municipality": "Nykvarn",
+    "latitude": 59.1833,
+    "longitude": 17.4
+  },
+  {
+    "name": "Nyköping",
+    "municipality": "Nyköping",
+    "latitude": 58.7528,
+    "longitude": 17.0086
+  },
+  {
+    "name": "Nynäshamn",
+    "municipality": "Nynäshamn",
+    "latitude": 58.9333,
+    "longitude": 17.8833
+  },
+  {
+    "name": "Nässjö",
+    "municipality": "Nässjö",
+    "latitude": 57.65,
+    "longitude": 14.6833
+  },
+  {
+    "name": "Ockelbo",
+    "municipality": "Ockelbo",
+    "latitude": 60.8833,
+    "longitude": 16.7167
+  },
+  {
+    "name": "Olofström",
+    "municipality": "Olofström",
+    "latitude": 56.2667,
+    "longitude": 14.5333
+  },
+  {
+    "name": "Orsa",
+    "municipality": "Orsa",
+    "latitude": 61.1167,
+    "longitude": 14.6167
+  },
+  {
+    "name": "Henån",
+    "municipality": "Orusts",
+    "latitude": 58.2333,
+    "longitude": 11.6833
+  },
+  {
+    "name": "Osby",
+    "municipality": "Osby",
+    "latitude": 56.3667,
+    "longitude": 13.9833
+  },
+  {
+    "name": "Oskarshamn",
+    "municipality": "Oskarshamn",
+    "latitude": 57.2667,
+    "longitude": 16.45
+  },
+  {
+    "name": "Oskarström",
+    "municipality": "Oskarström",
+    "latitude": 56.8051,
+    "longitude": 12.9634
+  },
+  {
+    "name": "Edsbyn",
+    "municipality": "Ovanåkers",
+    "latitude": 61.3833,
+    "longitude": 15.8167
+  },
+  {
+    "name": "Oxelösund",
+    "municipality": "Oxelösund",
+    "latitude": 58.6667,
+    "longitude": 17.1167
+  },
+  {
+    "name": "Pajala",
+    "municipality": "Pajala",
+    "latitude": 67.1833,
+    "longitude": 23.3667
+  },
+  {
+    "name": "Partille",
+    "municipality": "Partille",
+    "latitude": 57.7333,
+    "longitude": 12.1
+  },
+  {
+    "name": "Perstorp",
+    "municipality": "Perstorp",
+    "latitude": 56.1333,
+    "longitude": 13.3833
+  },
+  {
+    "name": "Piteå",
+    "municipality": "Piteå",
+    "latitude": 65.3333,
+    "longitude": 21.5
+  },
+  {
+    "name": "Hammarstrand",
+    "municipality": "Ragunda",
+    "latitude": 63.1,
+    "longitude": 16.35
+  },
+  {
+    "name": "Robertsfors",
+    "municipality": "Robertsfors",
+    "latitude": 64.2,
+    "longitude": 20.85
+  },
+  {
+    "name": "Ronneby",
+    "municipality": "Ronneby",
+    "latitude": 56.2,
+    "longitude": 15.2833
+  },
+  {
+    "name": "Rättvik",
+    "municipality": "Rättvik",
+    "latitude": 60.8833,
+    "longitude": 15.1333
+  },
+  {
+    "name": "Sala",
+    "municipality": "Sala",
+    "latitude": 59.9204,
+    "longitude": 16.6061
+  },
+  {
+    "name": "Salemstaden",
+    "municipality": "Salems",
+    "latitude": 59.2333,
+    "longitude": 17.6833
+  },
+  {
+    "name": "Rönninge",
+    "municipality": "Salems lands",
+    "latitude": 59.1936,
+    "longitude": 17.7494
+  },
+  {
+    "name": "Sandviken",
+    "municipality": "Sandviken",
+    "latitude": 60.6167,
+    "longitude": 16.7833
+  },
+  {
+    "name": "Märsta",
+    "municipality": "Sigtuna",
+    "latitude": 59.6333,
+    "longitude": 17.8833
+  },
+  {
+    "name": "Simrishamn",
+    "municipality": "Simrishamn",
+    "latitude": 55.55,
+    "longitude": 14.35
+  },
+  {
+    "name": "Sjöbo",
+    "municipality": "Sjöbo",
+    "latitude": 55.6333,
+    "longitude": 13.7
+  },
+  {
+    "name": "Skanör",
+    "municipality": "Skanör med Falsterbo",
+    "latitude": 55.4136,
+    "longitude": 12.8528
+  },
+  {
+    "name": "Skara",
+    "municipality": "Skara",
+    "latitude": 58.3833,
+    "longitude": 13.4333
+  },
+  {
+    "name": "Skellefteå",
+    "municipality": "Skellefteå",
+    "latitude": 64.75,
+    "longitude": 20.95
+  },
+  {
+    "name": "Skinnskatteberg",
+    "municipality": "Skinnskatteberg",
+    "latitude": 59.8333,
+    "longitude": 15.6833
+  },
+  {
+    "name": "Skurup",
+    "municipality": "Skurup",
+    "latitude": 55.4833,
+    "longitude": 13.5
+  },
+  {
+    "name": "Skövde",
+    "municipality": "Skövde",
+    "latitude": 58.3833,
+    "longitude": 13.85
+  },
+  {
+    "name": "Smedjebacken",
+    "municipality": "Smedjebacken",
+    "latitude": 60.1333,
+    "longitude": 15.4167
+  },
+  {
+    "name": "Sollefteå",
+    "municipality": "Sollefteå",
+    "latitude": 63.1667,
+    "longitude": 17.2667
+  },
+  {
+    "name": "Tureberg",
+    "municipality": "Sollentuna",
+    "latitude": 59.45,
+    "longitude": 17.9167
+  },
+  {
+    "name": "Solna",
+    "municipality": "Solna",
+    "latitude": 59.3667,
+    "longitude": 18.0167
+  },
+  {
+    "name": "Sorsele",
+    "municipality": "Sorsele",
+    "latitude": 65.5333,
+    "longitude": 17.5333
+  },
+  {
+    "name": "Kungshamn",
+    "municipality": "Sotenäs",
+    "latitude": 58.3667,
+    "longitude": 11.25
+  },
+  {
+    "name": "Staffanstorp",
+    "municipality": "Staffanstorp",
+    "latitude": 55.6333,
+    "longitude": 13.2
+  },
+  {
+    "name": "Stenungsund",
+    "municipality": "Stenungsund",
+    "latitude": 58.0833,
+    "longitude": 11.8167
+  },
+  {
+    "name": "Stockholm",
+    "municipality": "Stockholm",
+    "latitude": 59.3275,
+    "longitude": 18.0547
+  },
+  {
+    "name": "Storfors",
+    "municipality": "Storfors",
+    "latitude": 59.5333,
+    "longitude": 14.2667
+  },
+  {
+    "name": "Storuman",
+    "municipality": "Storuman",
+    "latitude": 65.1,
+    "longitude": 17.1
+  },
+  {
+    "name": "Strängnäs",
+    "municipality": "Strängnäs",
+    "latitude": 59.3769,
+    "longitude": 17.0353
+  },
+  {
+    "name": "Strömstad",
+    "municipality": "Strömstad",
+    "latitude": 58.9333,
+    "longitude": 11.1667
+  },
+  {
+    "name": "Strömsund",
+    "municipality": "Strömsund",
+    "latitude": 63.85,
+    "longitude": 15.5833
+  },
+  {
+    "name": "Hallonbergen",
+    "municipality": "Sundbybergs",
+    "latitude": 59.3633,
+    "longitude": 17.9656
+  },
+  {
+    "name": "Sundsvall",
+    "municipality": "Sundsvall",
+    "latitude": 62.4,
+    "longitude": 17.3167
+  },
+  {
+    "name": "Sunne",
+    "municipality": "Sunne",
+    "latitude": 59.8333,
+    "longitude": 13.1333
+  },
+  {
+    "name": "Surahammar",
+    "municipality": "Surahammar",
+    "latitude": 59.7167,
+    "longitude": 16.2167
+  },
+  {
+    "name": "Svalöv",
+    "municipality": "Svalöv",
+    "latitude": 55.9167,
+    "longitude": 13.1167
+  },
+  {
+    "name": "Svedala",
+    "municipality": "Svedala",
+    "latitude": 55.5,
+    "longitude": 13.2333
+  },
+  {
+    "name": "Sveg",
+    "municipality": "Sveg",
+    "latitude": 62.0347,
+    "longitude": 14.3648
+  },
+  {
+    "name": "Svenljunga",
+    "municipality": "Svenljunga",
+    "latitude": 57.5,
+    "longitude": 13.1167
+  },
+  {
+    "name": "Säffle",
+    "municipality": "Säffle",
+    "latitude": 59.1333,
+    "longitude": 12.9333
+  },
+  {
+    "name": "Säter",
+    "municipality": "Säter",
+    "latitude": 60.35,
+    "longitude": 15.75
+  },
+  {
+    "name": "Sävsjö",
+    "municipality": "Sävsjö",
+    "latitude": 57.4,
+    "longitude": 14.6667
+  },
+  {
+    "name": "Söderhamn",
+    "municipality": "Söderhamn",
+    "latitude": 61.3,
+    "longitude": 17.0833
+  },
+  {
+    "name": "Söderköping",
+    "municipality": "Söderköping",
+    "latitude": 58.4803,
+    "longitude": 16.3225
+  },
+  {
+    "name": "Södertälje",
+    "municipality": "Södertälje",
+    "latitude": 59.1,
+    "longitude": 17.5167
+  },
+  {
+    "name": "Sölvesborg",
+    "municipality": "Sölvesborg",
+    "latitude": 56.05,
+    "longitude": 14.5833
+  },
+  {
+    "name": "Tanumshede",
+    "municipality": "Tanums",
+    "latitude": 58.7167,
+    "longitude": 11.3167
+  },
+  {
+    "name": "Tibro",
+    "municipality": "Tibro",
+    "latitude": 58.4167,
+    "longitude": 14.1667
+  },
+  {
+    "name": "Tidaholm",
+    "municipality": "Tidaholm",
+    "latitude": 58.1833,
+    "longitude": 13.95
+  },
+  {
+    "name": "Tierp",
+    "municipality": "Tierp",
+    "latitude": 60.3444,
+    "longitude": 17.5131
+  },
+  {
+    "name": "Timrå",
+    "municipality": "Timrå",
+    "latitude": 62.5,
+    "longitude": 17.3333
+  },
+  {
+    "name": "Tingsryd",
+    "municipality": "Tingsryd",
+    "latitude": 56.5333,
+    "longitude": 14.9833
+  },
+  {
+    "name": "Skärhamn",
+    "municipality": "Tjörns",
+    "latitude": 58.0,
+    "longitude": 11.55
+  },
+  {
+    "name": "Tomelilla",
+    "municipality": "Tomelilla",
+    "latitude": 55.55,
+    "longitude": 13.95
+  },
+  {
+    "name": "Torsby",
+    "municipality": "Torsby",
+    "latitude": 60.1333,
+    "longitude": 13.0
+  },
+  {
+    "name": "Torsås",
+    "municipality": "Torsås",
+    "latitude": 56.4,
+    "longitude": 16.0
+  },
+  {
+    "name": "Tranemo",
+    "municipality": "Tranemo",
+    "latitude": 57.4833,
+    "longitude": 13.35
+  },
+  {
+    "name": "Tranås",
+    "municipality": "Tranås",
+    "latitude": 58.0333,
+    "longitude": 14.9667
+  },
+  {
+    "name": "Trelleborg",
+    "municipality": "Trelleborg",
+    "latitude": 55.3667,
+    "longitude": 13.1667
+  },
+  {
+    "name": "Trollhättan",
+    "municipality": "Trollhättan",
+    "latitude": 58.2833,
+    "longitude": 12.2833
+  },
+  {
+    "name": "Trosa",
+    "municipality": "Trosa",
+    "latitude": 58.8939,
+    "longitude": 17.5522
+  },
+  {
+    "name": "Bollmora",
+    "municipality": "Tyresö",
+    "latitude": 59.2333,
+    "longitude": 18.2167
+  },
+  {
+    "name": "Täby",
+    "municipality": "Täby",
+    "latitude": 59.4439,
+    "longitude": 18.0687
+  },
+  {
+    "name": "Töreboda",
+    "municipality": "Töreboda",
+    "latitude": 58.7167,
+    "longitude": 14.1333
+  },
+  {
+    "name": "Uddevalla",
+    "municipality": "Uddevalla",
+    "latitude": 58.35,
+    "longitude": 11.9167
+  },
+  {
+    "name": "Ulricehamn",
+    "municipality": "Ulricehamn",
+    "latitude": 57.7917,
+    "longitude": 13.4128
+  },
+  {
+    "name": "Umeå",
+    "municipality": "Umeå",
+    "latitude": 63.8333,
+    "longitude": 20.25
+  },
+  {
+    "name": "Unnaryd",
+    "municipality": "Unnaryd",
+    "latitude": 56.9553,
+    "longitude": 13.5286
+  },
+  {
+    "name": "Upplands Väsby",
+    "municipality": "Upplands Väsby",
+    "latitude": 59.5167,
+    "longitude": 17.9
+  },
+  {
+    "name": "Kungsängen",
+    "municipality": "Upplands-Bro",
+    "latitude": 59.5333,
+    "longitude": 17.6667
+  },
+  {
+    "name": "Uppsala",
+    "municipality": "Uppsala",
+    "latitude": 59.8667,
+    "longitude": 17.6333
+  },
+  {
+    "name": "Åseda",
+    "municipality": "Uppvidinge",
+    "latitude": 57.1667,
+    "longitude": 15.3333
+  },
+  {
+    "name": "Vadstena",
+    "municipality": "Vadstena",
+    "latitude": 58.4483,
+    "longitude": 14.8897
+  },
+  {
+    "name": "Vaggeryd",
+    "municipality": "Vaggeryd",
+    "latitude": 57.5,
+    "longitude": 14.1167
+  },
+  {
+    "name": "Valdemarsvik",
+    "municipality": "Valdemarsvik",
+    "latitude": 58.2056,
+    "longitude": 16.6019
+  },
+  {
+    "name": "Vallentuna",
+    "municipality": "Vallentuna",
+    "latitude": 59.5833,
+    "longitude": 18.2
+  },
+  {
+    "name": "Vansbro",
+    "municipality": "Vansbro",
+    "latitude": 60.5167,
+    "longitude": 14.2167
+  },
+  {
+    "name": "Vara",
+    "municipality": "Vara",
+    "latitude": 58.2667,
+    "longitude": 12.95
+  },
+  {
+    "name": "Varberg",
+    "municipality": "Varberg",
+    "latitude": 57.1,
+    "longitude": 12.25
+  },
+  {
+    "name": "Vaxholm",
+    "municipality": "Vaxholm",
+    "latitude": 59.4,
+    "longitude": 18.2833
+  },
+  {
+    "name": "Vellinge",
+    "municipality": "Vellinge",
+    "latitude": 55.4667,
+    "longitude": 13.0167
+  },
+  {
+    "name": "Vetlanda",
+    "municipality": "Vetlanda",
+    "latitude": 57.4333,
+    "longitude": 15.0667
+  },
+  {
+    "name": "Vilhelmina",
+    "municipality": "Vilhelmina",
+    "latitude": 64.6167,
+    "longitude": 16.65
+  },
+  {
+    "name": "Vimmerby",
+    "municipality": "Vimmerby",
+    "latitude": 57.6667,
+    "longitude": 15.85
+  },
+  {
+    "name": "Vindeln",
+    "municipality": "Vindeln",
+    "latitude": 64.2,
+    "longitude": 19.7167
+  },
+  {
+    "name": "Vingåker",
+    "municipality": "Vingåker",
+    "latitude": 59.0333,
+    "longitude": 15.8667
+  },
+  {
+    "name": "Vinslöv",
+    "municipality": "Vinslöv",
+    "latitude": 56.0986,
+    "longitude": 13.9068
+  },
+  {
+    "name": "Vinslöv",
+    "municipality": "Vinslövs central",
+    "latitude": 56.0986,
+    "longitude": 13.9068
+  },
+  {
+    "name": "Vänersborg",
+    "municipality": "Vänersborg",
+    "latitude": 58.3833,
+    "longitude": 12.3167
+  },
+  {
+    "name": "Vännäs",
+    "municipality": "Vännäs",
+    "latitude": 63.9167,
+    "longitude": 19.75
+  },
+  {
+    "name": "Gustavsberg",
+    "municipality": "Värmdö",
+    "latitude": 59.3167,
+    "longitude": 18.5667
+  },
+  {
+    "name": "Värnamo",
+    "municipality": "Värnamo",
+    "latitude": 57.1833,
+    "longitude": 14.0333
+  },
+  {
+    "name": "Västervik",
+    "municipality": "Västervik",
+    "latitude": 57.75,
+    "longitude": 16.6333
+  },
+  {
+    "name": "Västerås",
+    "municipality": "Västerås",
+    "latitude": 59.6167,
+    "longitude": 16.5333
+  },
+  {
+    "name": "Växjö",
+    "municipality": "Växjö",
+    "latitude": 56.8833,
+    "longitude": 14.8
+  },
+  {
+    "name": "Vårgårda",
+    "municipality": "Vårgårda",
+    "latitude": 58.0333,
+    "longitude": 12.8
+  },
+  {
+    "name": "Österbymo",
+    "municipality": "Ydre",
+    "latitude": 57.8272,
+    "longitude": 15.2739
+  },
+  {
+    "name": "Ystad",
+    "municipality": "Ystad",
+    "latitude": 55.4167,
+    "longitude": 13.8333
+  },
+  {
+    "name": "Älmhult",
+    "municipality": "Älmhult",
+    "latitude": 56.55,
+    "longitude": 14.1333
+  },
+  {
+    "name": "Älvdalen",
+    "municipality": "Älvdalen",
+    "latitude": 61.2333,
+    "longitude": 14.0333
+  },
+  {
+    "name": "Skutskär",
+    "municipality": "Älvkarleby",
+    "latitude": 60.6244,
+    "longitude": 17.4161
+  },
+  {
+    "name": "Älvsbyn",
+    "municipality": "Älvsbyn",
+    "latitude": 65.6833,
+    "longitude": 21.0167
+  },
+  {
+    "name": "Ängelholm",
+    "municipality": "Ängelholm",
+    "latitude": 56.25,
+    "longitude": 12.85
+  },
+  {
+    "name": "Åmål",
+    "municipality": "Åmål",
+    "latitude": 59.05,
+    "longitude": 12.7
+  },
+  {
+    "name": "Ånge",
+    "municipality": "Ånge",
+    "latitude": 62.5167,
+    "longitude": 15.6167
+  },
+  {
+    "name": "Järpen",
+    "municipality": "Åre",
+    "latitude": 63.35,
+    "longitude": 13.4667
+  },
+  {
+    "name": "Årjäng",
+    "municipality": "Årjäng",
+    "latitude": 59.3833,
+    "longitude": 12.1333
+  },
+  {
+    "name": "Åsele",
+    "municipality": "Åsele",
+    "latitude": 64.15,
+    "longitude": 17.35
+  },
+  {
+    "name": "Åstorp",
+    "municipality": "Åstorp",
+    "latitude": 56.1333,
+    "longitude": 12.95
+  },
+  {
+    "name": "Åtvidaberg",
+    "municipality": "Åtvidaberg",
+    "latitude": 58.2017,
+    "longitude": 15.9981
+  },
+  {
+    "name": "Öckerö",
+    "municipality": "Öckerö",
+    "latitude": 57.7111,
+    "longitude": 11.6472
+  },
+  {
+    "name": "Ödeshög",
+    "municipality": "Ödeshög",
+    "latitude": 58.2308,
+    "longitude": 14.6528
+  },
+  {
+    "name": "Örebro",
+    "municipality": "Örebro",
+    "latitude": 59.2739,
+    "longitude": 15.2133
+  },
+  {
+    "name": "Örkelljunga",
+    "municipality": "Örkelljunga",
+    "latitude": 56.2833,
+    "longitude": 13.2833
+  },
+  {
+    "name": "Örnsköldsvik",
+    "municipality": "Örnsköldsvik",
+    "latitude": 63.2833,
+    "longitude": 18.7333
+  },
+  {
+    "name": "Östersund",
+    "municipality": "Östersund",
+    "latitude": 63.1833,
+    "longitude": 14.6667
+  },
+  {
+    "name": "Åkersberga",
+    "municipality": "Österåkers",
+    "latitude": 59.5,
+    "longitude": 18.45
+  },
+  {
+    "name": "Östhammar",
+    "municipality": "Östhammar",
+    "latitude": 60.2589,
+    "longitude": 18.3736
+  },
+  {
+    "name": "Broby",
+    "municipality": "Östra Göinge",
+    "latitude": 56.25,
+    "longitude": 14.0667
+  },
+  {
+    "name": "Överkalix",
+    "municipality": "Överkalix",
+    "latitude": 66.35,
+    "longitude": 22.8833
+  },
+  {
+    "name": "Övertorneå",
+    "municipality": "Övertorneå",
+    "latitude": 66.3833,
+    "longitude": 23.6667
+  }
 ]

@@ -14,13 +14,17 @@ model:
   # Weights for the "population potential" component. Should sum to ~1.0;
   # they are applied to bell/sigmoid-transformed sub-scores (0-1 each).
   population_weights:
-    temperature: 0.24
-    rainfall: 0.24
-    moisture: 0.16
-    wetland: 0.14
-    forest: 0.08
-    season: 0.08
-    snowmelt: 0.06
+    temperature: 0.22
+    rainfall: 0.22
+    moisture: 0.14
+    wetland: 0.13
+    forest: 0.07
+    season: 0.07
+    snowmelt: 0.05
+    # Decay-weighted recent rainfall x wetland/lake density x terrain
+    # drainage -- how long rain-fed pools likely persist (see
+    # feature_engineering.py::_standing_water_persistence).
+    standing_water: 0.10
 
   # Parameters for the "biting activity" component (temperature, humidity,
   # wind, daylight/daypart, rain suppression).

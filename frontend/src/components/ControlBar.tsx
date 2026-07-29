@@ -1,17 +1,13 @@
-import { useEffect, useRef, useState } from "react";
-import { ACTIVITY_LABELS, LAYER_LABELS, type LayerKey, type Manifest, type PlaceRecord } from "../types/forecast";
+import { ACTIVITY_KEYS, LAYER_KEYS, type LayerKey, type Manifest, type PlaceRecord } from "../types/forecast";
 import { SearchBox } from "./SearchBox";
 import { useGeolocation } from "../hooks/useGeolocation";
+import { useI18n } from "../i18n";
+import type { I18nKey } from "../i18n/types";
 
 function addDaysIso(dateIso: string, days: number): string {
   const d = new Date(dateIso + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
-}
-
-function formatDateLabel(dateIso: string): string {
-  const d = new Date(dateIso + "T00:00:00Z");
-  return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
 }
 
 export interface ControlBarProps {
@@ -53,14 +49,25 @@ export function ControlBar({
   animating,
   onToggleAnimation,
 }: ControlBarProps) {
+  const { t, locale } = useI18n();
   const forecastStart = manifest?.forecast_start ?? new Date().toISOString().slice(0, 10);
   const dayOptions = Array.from({ length: 7 }, (_, i) => addDaysIso(forecastStart, i));
 
   const { locate, loading: locating, error: geoError } = useGeolocation(onSelectLocation);
 
+  function formatDateLabel(dateIso: string): string {
+    const d = new Date(dateIso + "T00:00:00Z");
+    return d.toLocaleDateString(locale === "sv" ? "sv-SE" : undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      timeZone: "UTC",
+    });
+  }
+
   return (
     <div className="control-bar">
-      <div className="control-group">
+      <div className="control-group control-group-search">
         <SearchBox places={places} onSelect={(lat, lon) => onSelectLocation(lat, lon)} />
       </div>
 
@@ -69,19 +76,19 @@ export function ControlBar({
           type="button"
           className="icon-button"
           onClick={locate}
-          aria-label="Use my current location"
-          title={geoError ?? "Use my current location"}
+          aria-label={t("controlBar.useMyLocation")}
+          title={geoError ?? t("controlBar.useMyLocation")}
         >
           {locating ? "…" : "📍"}
         </button>
       </div>
 
       <div className="control-group">
-        <label htmlFor="date-select">Day</label>
+        <label htmlFor="date-select">{t("controlBar.day")}</label>
         <select id="date-select" value={date} onChange={(e) => onDateChange(e.target.value)}>
           {dayOptions.map((d, i) => (
             <option key={d} value={d}>
-              {i === 0 ? "Today" : formatDateLabel(d)}
+              {i === 0 ? t("controlBar.today") : formatDateLabel(d)}
             </option>
           ))}
         </select>
@@ -89,7 +96,7 @@ export function ControlBar({
 
       {isHourlyDay ? (
         <div className="control-group">
-          <label htmlFor="hour-select">Hour (UTC)</label>
+          <label htmlFor="hour-select">{t("controlBar.hour")}</label>
           <input
             id="hour-select"
             type="range"
@@ -101,17 +108,23 @@ export function ControlBar({
             aria-valuetext={`${hour ?? 0}:00 UTC`}
           />
           <span aria-hidden="true">{String(hour ?? 0).padStart(2, "0")}:00</span>
-          <button type="button" className="icon-button" aria-pressed={animating} onClick={onToggleAnimation} title="Play/pause hourly animation">
+          <button
+            type="button"
+            className="icon-button"
+            aria-pressed={animating}
+            onClick={onToggleAnimation}
+            title={t("controlBar.playPause")}
+          >
             {animating ? "⏸" : "▶"}
           </button>
         </div>
       ) : (
         <div className="control-group">
-          <label htmlFor="daypart-select">Time of day</label>
+          <label htmlFor="daypart-select">{t("controlBar.timeOfDay")}</label>
           <select id="daypart-select" value={daypart} onChange={(e) => onDaypartChange(e.target.value)}>
             {DAYPARTS.map((part) => (
               <option key={part} value={part}>
-                {part[0].toUpperCase() + part.slice(1)}
+                {t(`daypart.${part}` as I18nKey)}
               </option>
             ))}
           </select>
@@ -119,22 +132,22 @@ export function ControlBar({
       )}
 
       <div className="control-group">
-        <label htmlFor="activity-select">Activity</label>
+        <label htmlFor="activity-select">{t("controlBar.activity")}</label>
         <select id="activity-select" value={activity} onChange={(e) => onActivityChange(e.target.value)}>
-          {Object.entries(ACTIVITY_LABELS).map(([key, label]) => (
+          {ACTIVITY_KEYS.map((key) => (
             <option key={key} value={key}>
-              {label}
+              {t(`activity.${key}` as I18nKey)}
             </option>
           ))}
         </select>
       </div>
 
       <div className="control-group">
-        <label htmlFor="layer-select">Layer</label>
+        <label htmlFor="layer-select">{t("controlBar.layer")}</label>
         <select id="layer-select" value={layer} onChange={(e) => onLayerChange(e.target.value as LayerKey)}>
-          {Object.entries(LAYER_LABELS).map(([key, label]) => (
+          {LAYER_KEYS.map((key) => (
             <option key={key} value={key}>
-              {label}
+              {t(`layer.${key}` as I18nKey)}
             </option>
           ))}
         </select>

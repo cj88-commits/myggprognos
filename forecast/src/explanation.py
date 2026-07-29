@@ -1,4 +1,4 @@
-"""Deterministic, template-based forecast explanations.
+"""Deterministic, template-based forecast explanations (in Swedish).
 
 No external language model is used. Explanations are built directly from
 the same named contribution values the scoring model already computed, so
@@ -15,13 +15,14 @@ from feature_engineering import FeatureSet
 from model import NEGATIVE_LABELS, POSITIVE_LABELS, ScoreResult
 
 POPULATION_LABELS = {
-    "temperature": "Warm recent conditions",
-    "rainfall": "Wet conditions during the past two weeks",
-    "moisture": "Damp/waterlogged ground",
-    "wetland": "Nearby wetlands and standing water",
-    "forest": "Forest cover providing shelter and breeding sites",
-    "season": "Peak mosquito season for this time of year",
-    "snowmelt": "Spring snowmelt / floodwater conditions",
+    "temperature": "Varma senaste dagarna",
+    "rainfall": "Mycket nederbörd de senaste två veckorna",
+    "moisture": "Fuktig/vattensjuk mark",
+    "standing_water": "Ihållande stående vatten",
+    "wetland": "Närliggande våtmarker och stående vatten",
+    "forest": "Skogsmark som ger skydd och häckningsplatser",
+    "season": "Högsäsong för mygg vid denna tid på året",
+    "snowmelt": "Vårflod / snösmältning",
 }
 
 
@@ -42,7 +43,7 @@ class Explanation:
 def _population_candidates(score: ScoreResult) -> list[Factor]:
     candidates = []
     for key, value in score.population_terms.items():
-        contribution = round(value / 10.0, 3)  # fraction of population_potential (0-10)
+        contribution = round(value / 100.0, 3)  # fraction of population_potential (0-100)
         if contribution > 0.08:
             candidates.append(Factor(key, POPULATION_LABELS.get(key, key), contribution))
     return candidates
@@ -80,32 +81,81 @@ def _static_negative_candidates(features: FeatureSet) -> list[Factor]:
     return negative
 
 
-def _summary_text(score: ScoreResult, positive: list[Factor], negative: list[Factor]) -> str:
+def _wind_descriptor(wind_ms: float) -> str:
+    if wind_ms < 2.5:
+        return "vinden är svag"
+    if wind_ms >= 6.0:
+        return "det blåser en del"
+    return "vinden är måttlig"
+
+
+def _join_swedish(parts: list[str]) -> str:
+    if len(parts) == 1:
+        return parts[0]
+    if len(parts) == 2:
+        return f"{parts[0]} och {parts[1]}"
+    return f"{', '.join(parts[:-1])} och {parts[-1]}"
+
+
+def _narrative_details(features: FeatureSet) -> list[str]:
+    """Build the concrete, value-grounded clauses used in the summary
+    sentence -- e.g. actual rainfall/temperature/wind, not just factor
+    labels -- so the "why is it like this?" text reads like a real
+    explanation rather than a list of tags."""
+    parts: list[str] = []
+
+    if features.precipitation_7d_mm >= 15:
+        parts.append(f"det har regnat mycket den senaste veckan ({round(features.precipitation_7d_mm)} mm)")
+    elif features.precipitation_3d_mm >= 8:
+        parts.append(f"det har regnat en del de senaste dagarna ({round(features.precipitation_3d_mm)} mm)")
+    elif features.days_since_meaningful_rain >= 10:
+        parts.append("det har varit torrt en längre tid")
+
+    if features.current_temperature_c is not None:
+        parts.append(f"temperaturen ligger runt {round(features.current_temperature_c)} °C")
+
+    if features.wind_speed_current_ms is not None:
+        parts.append(_wind_descriptor(features.wind_speed_current_ms))
+
+    return parts
+
+
+def _summary_text(score: ScoreResult, features: FeatureSet, positive: list[Factor], negative: list[Factor]) -> str:
     from model import risk_category
 
     _key, label = risk_category(score.final_risk)
-    if not positive and not negative:
-        return f"{label} mosquito risk with no single strongly dominant factor."
+    label_lower = label[0].lower() + label[1:]
 
-    parts = []
-    if positive:
-        names = [f.label[0].lower() + f.label[1:] for f in positive[:3]]
-        if len(names) == 1:
-            joined = names[0]
-        elif len(names) == 2:
-            joined = f"{names[0]} and {names[1]}"
-        else:
-            joined = f"{names[0]}, {names[1]} and {names[2]}"
-        parts.append(f"Risk is {label.lower()} because of {joined}.")
+    detail_parts = _narrative_details(features)
+
+    if not positive and not negative and not detail_parts:
+        return f"Myggrisken är {label_lower} idag utan någon enskild tydligt dominerande faktor."
+
+    if detail_parts:
+        summary = f"Myggrisken är {label_lower} idag eftersom {_join_swedish(detail_parts)}."
     else:
-        parts.append(f"Risk is {label.lower()}.")
+        names = [f.label[0].lower() + f.label[1:] for f in positive[:3]]
+        summary = f"Myggrisken är {label_lower} idag på grund av {_join_swedish(names)}."
 
     if negative:
         names = [f.label[0].lower() + f.label[1:] for f in negative[:2]]
-        joined = " and ".join(names)
-        parts.append(f"{joined[0].upper()}{joined[1:]} is reducing activity.")
+        joined = " och ".join(names)
+        summary += f" {joined[0].upper()}{joined[1:]} dämpar dock aktiviteten."
 
-    return " ".join(parts)
+    return summary
+
+
+def format_factor_strings(explanation: Explanation) -> list[str]:
+    """Flat, spec-literal list of human-readable factor strings, e.g.
+    "Hög temperatur (+18)" -- additive to (not a replacement for) the
+    structured positive/negative factor lists, which the UI's +/- list and
+    any future locale switching still rely on."""
+    lines: list[str] = []
+    for factor in explanation.positive_factors + explanation.negative_factors:
+        magnitude = round(factor.contribution * 100)
+        sign = "+" if magnitude > 0 else ""
+        lines.append(f"{factor.label} ({sign}{magnitude})")
+    return lines
 
 
 def generate_explanation(features: FeatureSet, score: ScoreResult) -> Explanation:
@@ -124,6 +174,6 @@ def generate_explanation(features: FeatureSet, score: ScoreResult) -> Explanatio
         key=lambda f: f.contribution,
     )[:2]
 
-    summary = _summary_text(score, all_positive, all_negative)
+    summary = _summary_text(score, features, all_positive, all_negative)
 
     return Explanation(positive_factors=all_positive, negative_factors=all_negative, summary=summary)

@@ -56,15 +56,22 @@ def _in_sweden_bbox(lat: float, lon: float) -> bool:
 
 def _load_boundary_polygon():
     """Return a shapely polygon/multipolygon for Sweden if a boundary file is
-    present under data/static, else None."""
+    present under data/static, else None. Uses shapely directly (already a
+    hard dependency, see forecast/requirements.txt) rather than geopandas,
+    so real land/ocean filtering doesn't need the heavier optional GIS
+    extras -- just a plain GeoJSON FeatureCollection with one Sweden
+    MultiPolygon feature (mainland + islands, incl. Gotland/Oland)."""
     boundary_path = Path(__file__).resolve().parents[2] / "data" / "static" / "sweden_boundary.geojson"
     if not boundary_path.exists():
         return None
     try:
-        import geopandas as gpd  # noqa: local import, optional dependency
+        from shapely.geometry import shape
+        from shapely.ops import unary_union
 
-        gdf = gpd.read_file(boundary_path)
-        return gdf.union_all() if hasattr(gdf, "union_all") else gdf.unary_union
+        with open(boundary_path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        geometries = [shape(feature["geometry"]) for feature in data["features"]]
+        return unary_union(geometries)
     except Exception:
         return None
 

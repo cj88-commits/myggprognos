@@ -1,5 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import maplibregl, { GeoJSONSource, Map as MaplibreMap, Marker, Popup } from "maplibre-gl";
+import { useI18n } from "../i18n";
+import { RISK_COLOR_STOPS } from "../lib/riskModel";
 import type { CellRecord, LayerKey } from "../types/forecast";
 
 const SWEDEN_CENTER: [number, number] = [17.5, 62.5];
@@ -11,26 +13,24 @@ const SWEDEN_INITIAL_ZOOM = 4.2;
 // MapTiler or Stadia Maps) via VITE_MAP_STYLE_URL; see README.
 const DEFAULT_STYLE_URL = "https://demotiles.maplibre.org/style.json";
 
+// Smooth 0-100 green -> yellow-green -> yellow -> orange -> red ramp (see
+// lib/riskModel.ts::RISK_COLOR_STOPS, shared with any other continuous risk
+// display), rather than the old 0-10 banded scale.
 const RISK_COLOR_EXPRESSION: maplibregl.ExpressionSpecification = [
   "interpolate",
   ["linear"],
   ["get", "value"],
-  0, "#2f6f4f",
-  2, "#6a9e3f",
-  4, "#d9a441",
-  6, "#d9682f",
-  8, "#a5262c",
-  10, "#6b1015",
+  ...RISK_COLOR_STOPS.flatMap((stop) => [stop.value, stop.color] as [number, string]),
 ];
 
 const CONFIDENCE_COLOR_EXPRESSION: maplibregl.ExpressionSpecification = [
   "interpolate",
   ["linear"],
   ["get", "value"],
-  0, "#a5262c",
-  0.4, "#d9a441",
-  0.7, "#2f6f4f",
-  1, "#1c4a32",
+  0, "#d9432e",
+  40, "#f2c94c",
+  70, "#2e8b4f",
+  100, "#1c4a32",
 ];
 
 function buildFeatureCollection(
@@ -74,12 +74,18 @@ export function MapView({
   userLocation,
   reportMarkers = [],
 }: MapViewProps) {
+  const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MaplibreMap | null>(null);
   const readyRef = useRef(false);
   const selectedMarkerRef = useRef<Marker | null>(null);
   const userMarkerRef = useRef<Marker | null>(null);
   const reportMarkersRef = useRef<Marker[]>([]);
+
+  // Rebuilding a ~18k-feature collection on every render (rather than only
+  // when cells/values actually change) would be wasteful GC churn at
+  // full-Sweden scale.
+  const featureCollection = useMemo(() => buildFeatureCollection(cells, valuesByCellId), [cells, valuesByCellId]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -96,7 +102,7 @@ export function MapView({
     mapRef.current = map;
 
     map.on("load", () => {
-      map.addSource("cells", { type: "geojson", data: buildFeatureCollection(cells, valuesByCellId) });
+      map.addSource("cells", { type: "geojson", data: featureCollection });
       map.addLayer({
         id: "cells-heat",
         type: "circle",
@@ -143,7 +149,7 @@ export function MapView({
     if (!map || !readyRef.current) return;
     const source = map.getSource("cells") as GeoJSONSource | undefined;
     if (source) {
-      source.setData(buildFeatureCollection(cells, valuesByCellId));
+      source.setData(featureCollection);
     }
     if (map.getLayer("cells-heat")) {
       map.setPaintProperty(
@@ -152,7 +158,7 @@ export function MapView({
         layer === "confidence" ? CONFIDENCE_COLOR_EXPRESSION : RISK_COLOR_EXPRESSION
       );
     }
-  }, [cells, valuesByCellId, layer]);
+  }, [featureCollection, layer]);
 
   // Selected-location marker + fly-to.
   useEffect(() => {
@@ -202,12 +208,12 @@ export function MapView({
       el.style.border = "2px solid white";
       const marker = new maplibregl.Marker({ element: el })
         .setLngLat([userLocation.lon, userLocation.lat])
-        .setPopup(new Popup({ closeButton: false }).setText("Your location"));
+        .setPopup(new Popup({ closeButton: false }).setText(t("search.myLocation")));
       if (readyRef.current) marker.addTo(map);
       else map.once("load", () => marker.addTo(map));
       userMarkerRef.current = marker;
     }
-  }, [userLocation]);
+  }, [userLocation, t]);
 
   // Report markers (clustered visually via simple offset dots; a full
   // clustering implementation would use a GeoJSON source with
@@ -232,5 +238,5 @@ export function MapView({
     });
   }, [reportMarkers]);
 
-  return <div ref={containerRef} style={{ width: "100%", height: "100%" }} role="application" aria-label="Mosquito risk map of Sweden" />;
+  return <div ref={containerRef} style={{ width: "100%", height: "100%" }} role="application" aria-label={t("map.ariaLabel")} />;
 }

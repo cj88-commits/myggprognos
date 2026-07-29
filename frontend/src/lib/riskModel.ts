@@ -13,7 +13,7 @@ export function clamp(value: number, min: number, max: number): number {
 
 export function exposureForActivity(baseExposureFraction: number, activityMultiplier: number): number {
   const adjusted = clamp(baseExposureFraction * activityMultiplier, 0, 1.5);
-  return clamp(adjusted, 0, 1.5) * 10;
+  return clamp(adjusted, 0, 1.5) * 100;
 }
 
 export function finalRiskForActivity(
@@ -22,20 +22,24 @@ export function finalRiskForActivity(
   baseExposureFraction: number,
   activityMultiplier: number
 ): number {
-  const exposure0to10 = clamp(exposureForActivity(baseExposureFraction, activityMultiplier), 0, 10);
+  const exposure0to100 = clamp(exposureForActivity(baseExposureFraction, activityMultiplier), 0, 100);
   const combinedFraction =
-    (populationPotential / 10) * (bitingActivity / 10) * clamp(exposure0to10 / 10, 0, 1);
-  return clamp(combinedFraction * 10 * 2.6, 0, 10);
+    (populationPotential / 100) * (bitingActivity / 100) * clamp(exposure0to100 / 100, 0, 1);
+  return clamp(combinedFraction * 100 * 2.6, 0, 100);
 }
 
+// Risk is a 0-100 score (mirrors forecast/src/config.py::RISK_CATEGORIES).
+// `key` is an internal, locale-independent identifier -- components resolve
+// the *displayed* label via `t(`risk.category.${key}`)` (see i18n/sv.ts),
+// never `label` directly, which exists only as an English fallback/debug id.
 export type RiskCategoryKey = "very_low" | "low" | "moderate" | "high" | "very_high";
 
 export const RISK_CATEGORIES: { min: number; max: number; key: RiskCategoryKey; label: string; color: string }[] = [
-  { min: 0.0, max: 1.9, key: "very_low", label: "Very low", color: "#2f6f4f" },
-  { min: 2.0, max: 3.9, key: "low", label: "Low", color: "#6a9e3f" },
-  { min: 4.0, max: 5.9, key: "moderate", label: "Moderate", color: "#d9a441" },
-  { min: 6.0, max: 7.9, key: "high", label: "High", color: "#d9682f" },
-  { min: 8.0, max: 10.0, key: "very_high", label: "Very high", color: "#a5262c" },
+  { min: 0, max: 19, key: "very_low", label: "Very low", color: "#2e8b4f" },
+  { min: 20, max: 39, key: "low", label: "Low", color: "#9ecb3c" },
+  { min: 40, max: 59, key: "moderate", label: "Moderate", color: "#f2c94c" },
+  { min: 60, max: 79, key: "high", label: "High", color: "#f2994a" },
+  { min: 80, max: 100, key: "very_high", label: "Very high", color: "#d9432e" },
 ];
 
 export function riskCategory(score: number) {
@@ -44,14 +48,27 @@ export function riskCategory(score: number) {
   );
 }
 
-export type ConfidenceLabel = "Low" | "Medium" | "High";
+// Smooth (non-banded) 0-100 -> color interpolation used by the map and any
+// continuous-scale UI, matching the required green -> yellow-green ->
+// yellow -> orange -> red progression. Legend swatches use the discrete
+// RISK_CATEGORIES colors above; the map uses this continuous ramp.
+export const RISK_COLOR_STOPS: { value: number; color: string }[] = [
+  { value: 0, color: "#2e8b4f" },
+  { value: 20, color: "#9ecb3c" },
+  { value: 40, color: "#f2c94c" },
+  { value: 60, color: "#f2994a" },
+  { value: 80, color: "#d9432e" },
+  { value: 100, color: "#a5262c" },
+];
 
-export function confidenceLabel(confidence: number): ConfidenceLabel {
-  if (confidence < 0.4) return "Low";
-  if (confidence < 0.7) return "Medium";
-  return "High";
+export type ConfidenceCategoryKey = "low" | "medium" | "high";
+
+export function confidenceCategory(confidence: number): ConfidenceCategoryKey {
+  if (confidence < 40) return "low";
+  if (confidence < 70) return "medium";
+  return "high";
 }
 
 export function formatScore(score: number): string {
-  return score.toFixed(1);
+  return Math.round(score).toString();
 }

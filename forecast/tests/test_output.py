@@ -18,11 +18,11 @@ from static_features import generate_placeholder_static_features
 def _valid_daily_record(cell_id: str) -> dict:
     return {
         "cell_id": cell_id,
-        "risk": 4.2,
-        "population_potential": 5.0,
-        "biting_activity": 4.0,
-        "exposure": 3.5,
-        "confidence": 0.7,
+        "risk": 42.0,
+        "population_potential": 50.0,
+        "biting_activity": 40.0,
+        "exposure": 35.0,
+        "confidence": 70.0,
     }
 
 
@@ -56,18 +56,18 @@ def test_write_daily_file_rewrites_when_content_changes(tmp_path):
     records = [_valid_daily_record(c.cell_id) for c in cells]
     write_daily_file("2026-07-29", records, tmp_path)
 
-    records[0]["risk"] = 9.9
+    records[0]["risk"] = 99.0
     path = write_daily_file("2026-07-29", records, tmp_path)
 
     with gzip.open(path) as fh:
         reloaded = json.load(fh)
-    assert reloaded[0]["risk"] == 9.9
+    assert reloaded[0]["risk"] == 99.0
 
 
 def test_sanity_checks_reject_out_of_range_score():
     cells = generate_sample_grid()
     bad_record = _valid_daily_record(cells[0].cell_id)
-    bad_record["risk"] = 15.0
+    bad_record["risk"] = 150.0
     with pytest.raises(OutputValidationError):
         run_sanity_checks(cells, {"2026-07-29": [bad_record]}, previous_cell_count=None)
 
@@ -75,7 +75,7 @@ def test_sanity_checks_reject_out_of_range_score():
 def test_sanity_checks_reject_out_of_range_confidence():
     cells = generate_sample_grid()
     bad_record = _valid_daily_record(cells[0].cell_id)
-    bad_record["confidence"] = 1.5
+    bad_record["confidence"] = 150.0
     with pytest.raises(OutputValidationError):
         run_sanity_checks(cells, {"2026-07-29": [bad_record]}, previous_cell_count=None)
 

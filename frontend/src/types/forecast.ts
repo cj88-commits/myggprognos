@@ -10,6 +10,8 @@ export interface Manifest {
   hourly_files: string[];
   activities: Record<string, number>;
   warnings: string[];
+  series_files: string[];
+  series_shard_count: number;
 }
 
 export interface CellRecord {
@@ -54,6 +56,10 @@ export interface DailyRecord extends ScoreFields {
   peak_period: Daypart;
   dayparts: Record<Daypart, ScoreFields>;
   explanation: Explanation;
+  // Flat, spec-literal factor strings, e.g. "Hög temperatur (+18)" -- see
+  // forecast/src/explanation.py::format_factor_strings. Additive to (not a
+  // replacement for) the structured `explanation` object above.
+  explanation_text: string[];
 }
 
 export type HourlyRecord = ScoreFields;
@@ -67,19 +73,16 @@ export interface PlaceRecord {
 
 export type LayerKey = "risk" | "population_potential" | "biting_activity" | "confidence";
 
-export const LAYER_LABELS: Record<LayerKey, string> = {
-  risk: "Overall risk",
-  population_potential: "Population potential",
-  biting_activity: "Biting activity",
-  confidence: "Confidence",
-};
+// Locale-independent keys only -- components resolve the *displayed* label
+// via `t(`layer.${key}`)` / `t(`activity.${key}`)` (see frontend/src/i18n).
+export const LAYER_KEYS: LayerKey[] = ["risk", "population_potential", "biting_activity", "confidence"];
 
-export const ACTIVITY_LABELS: Record<string, string> = {
-  general: "General",
-  running: "Running",
-  hiking: "Hiking",
-  camping: "Camping",
-  fishing: "Fishing",
-  gardening: "Gardening",
-  outdoor_dining: "Outdoor dining",
-};
+export const ACTIVITY_KEYS: string[] = [
+  "general",
+  "running",
+  "hiking",
+  "camping",
+  "fishing",
+  "gardening",
+  "outdoor_dining",
+];

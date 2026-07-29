@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { useI18n } from "../i18n";
 import type { PlaceRecord } from "../types/forecast";
 
 interface SearchResult {
@@ -60,6 +61,7 @@ export function SearchBox({
   places: PlaceRecord[];
   onSelect: (lat: number, lon: number, label: string) => void;
 }) {
+  const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [remoteResults, setRemoteResults] = useState<SearchResult[]>([]);
@@ -83,7 +85,7 @@ export function SearchBox({
       .then(setRemoteResults)
       .catch((err: Error) => {
         if (err.name !== "AbortError") {
-          setSearchError("Online search unavailable; showing local matches only.");
+          setSearchError(t("search.onlineUnavailable"));
           setRemoteResults([]);
         }
       });
@@ -98,12 +100,12 @@ export function SearchBox({
   return (
     <div className="search-box">
       <label htmlFor="place-search" className="sr-only">
-        Search for a place or coordinates
+        {t("search.ariaLabel")}
       </label>
       <input
         id="place-search"
         type="text"
-        placeholder="Search town, municipality or lat, lon"
+        placeholder={t("search.placeholder")}
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);
@@ -124,7 +126,10 @@ export function SearchBox({
                 onSelect(coordinateMatch.latitude, coordinateMatch.longitude, `${coordinateMatch.latitude.toFixed(4)}, ${coordinateMatch.longitude.toFixed(4)}`)
               }
             >
-              Go to coordinates {coordinateMatch.latitude.toFixed(4)}, {coordinateMatch.longitude.toFixed(4)}
+              {t("search.goToCoordinates", {
+                lat: coordinateMatch.latitude.toFixed(4),
+                lon: coordinateMatch.longitude.toFixed(4),
+              })}
             </button>
           )}
           {combined.map((result) => (
@@ -139,7 +144,7 @@ export function SearchBox({
           ))}
           {searchError && <div className="search-attribution">{searchError}</div>}
           {remoteResults.length > 0 && (
-            <div className="search-attribution">Place search © OpenStreetMap contributors</div>
+            <div className="search-attribution">{t("search.attribution")}</div>
           )}
         </div>
       )}

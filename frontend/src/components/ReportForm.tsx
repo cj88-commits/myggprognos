@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useI18n } from "../i18n";
+import type { I18nKey } from "../i18n/types";
 import { ACTIVITY_OPTIONS, SEVERITY_LABELS, TERRAIN_OPTIONS, submitReport } from "../lib/reportsApi";
 
 export interface ReportFormProps {
@@ -14,6 +16,26 @@ export interface ReportFormProps {
 const EMAIL_PATTERN = /[^\s@]+@[^\s@]+\.[^\s@]+/;
 const PHONE_PATTERN = /\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b/;
 
+// Wire values (sent to the Worker API, validated server-side against the
+// exact same English strings -- see worker/src/validation.ts) stay in
+// English; only the *displayed* label is translated, via these key maps.
+const SEVERITY_KEYS = ["none", "few", "noticeable", "many", "unbearable"] as const;
+const TERRAIN_KEY_BY_VALUE: Record<string, string> = {
+  Urban: "urban",
+  "Open countryside": "countryside",
+  Forest: "forest",
+  Wetland: "wetland",
+  Waterside: "waterside",
+};
+const ACTIVITY_KEY_BY_VALUE: Record<string, string> = {
+  Stationary: "stationary",
+  Walking: "walking",
+  Running: "running",
+  Camping: "camping",
+  Fishing: "fishing",
+  Gardening: "gardening",
+};
+
 function roundCoordinate(value: number): number {
   // ~1.1km precision at Swedish latitudes -- coarse enough to protect
   // individual privacy while remaining useful for cell-level aggregation.
@@ -21,6 +43,7 @@ function roundCoordinate(value: number): number {
 }
 
 export function ReportForm({ cellId, latitude, longitude, forecastScore, modelVersion, onClose, onSubmitted }: ReportFormProps) {
+  const { t } = useI18n();
   const [severity, setSeverity] = useState<number | null>(null);
   const [terrain, setTerrain] = useState<string | null>(null);
   const [activity, setActivity] = useState<string | null>(null);
@@ -33,11 +56,11 @@ export function ReportForm({ cellId, latitude, longitude, forecastScore, modelVe
 
   async function handleSubmit() {
     if (severity === null) {
-      setError("Please choose how bad mosquitoes are here right now.");
+      setError(t("report.errorSeverityRequired"));
       return;
     }
     if (commentHasPossiblePersonalData) {
-      setError("Please remove anything that looks like an email address or phone number from the comment.");
+      setError(t("report.errorPersonalData"));
       return;
     }
     setSubmitting(true);
@@ -66,11 +89,11 @@ export function ReportForm({ cellId, latitude, longitude, forecastScore, modelVe
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal" role="dialog" aria-modal="true" aria-labelledby="report-title">
         <h2 id="report-title" style={{ marginTop: 0 }}>
-          How bad are mosquitoes here right now?
+          {t("report.title")}
         </h2>
 
         <div className="field-group">
-          <span className="field-label">Severity</span>
+          <span className="field-label">{t("report.severity")}</span>
           <div className="option-grid">
             {SEVERITY_LABELS.map((label, index) => (
               <button
@@ -80,14 +103,14 @@ export function ReportForm({ cellId, latitude, longitude, forecastScore, modelVe
                 aria-pressed={severity === index}
                 onClick={() => setSeverity(index)}
               >
-                {label}
+                {t(`report.severity.${SEVERITY_KEYS[index]}` as I18nKey)}
               </button>
             ))}
           </div>
         </div>
 
         <div className="field-group">
-          <span className="field-label">Terrain (optional)</span>
+          <span className="field-label">{t("report.terrain")}</span>
           <div className="option-grid">
             {TERRAIN_OPTIONS.map((option) => (
               <button
@@ -97,14 +120,14 @@ export function ReportForm({ cellId, latitude, longitude, forecastScore, modelVe
                 aria-pressed={terrain === option}
                 onClick={() => setTerrain(terrain === option ? null : option)}
               >
-                {option}
+                {t(`report.terrain.${TERRAIN_KEY_BY_VALUE[option]}` as I18nKey)}
               </button>
             ))}
           </div>
         </div>
 
         <div className="field-group">
-          <span className="field-label">Activity (optional)</span>
+          <span className="field-label">{t("report.activity")}</span>
           <div className="option-grid">
             {ACTIVITY_OPTIONS.map((option) => (
               <button
@@ -114,35 +137,35 @@ export function ReportForm({ cellId, latitude, longitude, forecastScore, modelVe
                 aria-pressed={activity === option}
                 onClick={() => setActivity(activity === option ? null : option)}
               >
-                {option}
+                {t(`report.activity.${ACTIVITY_KEY_BY_VALUE[option]}` as I18nKey)}
               </button>
             ))}
           </div>
         </div>
 
         <div className="field-group">
-          <span className="field-label">Repellent used? (optional)</span>
+          <span className="field-label">{t("report.repellent")}</span>
           <div className="option-grid">
-            {["Yes", "No"].map((label) => {
-              const value = label === "Yes";
-              return (
-                <button
-                  key={label}
-                  type="button"
-                  className="option-chip"
-                  aria-pressed={repellent === value}
-                  onClick={() => setRepellent(repellent === value ? null : value)}
-                >
-                  {label}
-                </button>
-              );
-            })}
+            {[
+              { label: t("report.yes"), value: true },
+              { label: t("report.no"), value: false },
+            ].map(({ label, value }) => (
+              <button
+                key={label}
+                type="button"
+                className="option-chip"
+                aria-pressed={repellent === value}
+                onClick={() => setRepellent(repellent === value ? null : value)}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
 
         <div className="field-group">
           <label htmlFor="report-comment" className="field-label">
-            Comment (optional, max 280 characters)
+            {t("report.comment")}
           </label>
           <textarea
             id="report-comment"
@@ -150,14 +173,11 @@ export function ReportForm({ cellId, latitude, longitude, forecastScore, modelVe
             maxLength={280}
             value={comment}
             onChange={(e) => setComment(e.target.value)}
-            placeholder="No names, emails or phone numbers, please."
+            placeholder={t("report.commentPlaceholder")}
           />
         </div>
 
-        <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
-          We store only an approximate (rounded) location and forecast cell, never your name, email or exact GPS
-          position.
-        </p>
+        <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>{t("report.privacyNote")}</p>
 
         {error && (
           <p role="alert" style={{ color: "var(--color-danger)", fontSize: "0.85rem" }}>
@@ -167,10 +187,10 @@ export function ReportForm({ cellId, latitude, longitude, forecastScore, modelVe
 
         <div className="button-row">
           <button type="button" className="button primary" onClick={handleSubmit} disabled={submitting}>
-            {submitting ? "Submitting…" : "Submit report"}
+            {submitting ? t("report.submitting") : t("report.submit")}
           </button>
           <button type="button" className="button" onClick={onClose} disabled={submitting}>
-            Cancel
+            {t("report.cancel")}
           </button>
         </div>
       </div>

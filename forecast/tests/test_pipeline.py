@@ -32,14 +32,26 @@ def test_run_pipeline_sample_mode_produces_expected_assets(tmp_path):
         daily = json.load(fh)
     assert len(daily) == 5
     for record in daily:
-        assert 0.0 <= record["risk"] <= 10.0
-        assert 0.0 <= record["confidence"] <= 1.0
+        assert 0.0 <= record["risk"] <= 100.0
+        assert 0.0 <= record["confidence"] <= 100.0
         assert set(record["dayparts"]) == {"morning", "afternoon", "evening", "night"}
         assert record["explanation"]["summary"]
+        assert isinstance(record["explanation_text"], list)
 
     with gzip.open(tmp_path / "hourly" / "2026-07-29T06.json.gz") as fh:
         hourly = json.load(fh)
     assert len(hourly) == 5
+
+    assert manifest["series_files"]
+    assert manifest["series_shard_count"] > 0
+    from output import shard_for_cell_id
+
+    shard = shard_for_cell_id(cells[0]["cell_id"], manifest["series_shard_count"])
+    with gzip.open(tmp_path / "series" / f"{shard}.json.gz") as fh:
+        series_shard = json.load(fh)
+    assert cells[0]["cell_id"] in series_shard
+    assert len(series_shard[cells[0]["cell_id"]]["daily"]) == 7
+    assert len(series_shard[cells[0]["cell_id"]]["hourly"]) == 49
 
 
 def test_run_pipeline_does_not_rewrite_unchanged_files(tmp_path):

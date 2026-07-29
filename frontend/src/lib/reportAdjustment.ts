@@ -14,7 +14,7 @@ export function recommendedReportWeight(reportCount: number): number {
 }
 
 export function severityToRiskScale(averageSeverity: number): number {
-  return clamp(averageSeverity * 2.5, 0, 10);
+  return clamp(averageSeverity * 25, 0, 100);
 }
 
 export interface AdjustedRisk {
@@ -34,6 +34,6 @@ export function computeAdjustedRisk(modelRisk: number, summary: ReportSummary | 
     0.3
   );
   const reportRisk = severityToRiskScale(summary.average_severity);
-  const adjusted = clamp(modelRisk * (1 - weight) + reportRisk * weight, 0, 10);
+  const adjusted = clamp(modelRisk * (1 - weight) + reportRisk * weight, 0, 100);
   return { modelRisk, adjustedRisk: adjusted, weight, applied: weight > 0 };
 }

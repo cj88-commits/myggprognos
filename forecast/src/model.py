@@ -11,7 +11,7 @@ the score.
     biting activity       = product of bounded (0-1) activity multipliers
     exposure               = weighted sum of bounded (0-1) terrain/proximity terms
     final risk              = population potential x biting activity x exposure,
-                               rescaled to 0-10
+                               rescaled to 0-100
 """
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ def bell_curve(value: float, optimum: float, width: float) -> float:
 class Contribution:
     key: str
     label: str
-    value: float  # signed contribution to the relevant 0-10 component
+    value: float  # signed contribution to the relevant 0-100 component
 
 
 @dataclass
@@ -64,26 +64,27 @@ class ScoreResult:
 
 
 POSITIVE_LABELS = {
-    "temperature": "Warm conditions over recent days",
-    "rainfall": "Wet conditions during the past two weeks",
-    "moisture": "Damp/waterlogged ground",
-    "wetland": "Nearby wetlands and standing water",
-    "forest": "Forest cover providing shelter",
-    "season": "Peak mosquito season",
-    "snowmelt": "Spring snowmelt / floodwater conditions",
-    "temp_activity": "Temperature favourable for mosquito activity",
-    "humidity_activity": "High humidity favouring activity",
-    "daypart_activity": "Dawn/dusk peak activity period",
-    "terrain_exposure": "Vegetated terrain with limited airflow",
-    "water_proximity": "Close proximity to water",
+    "temperature": "Varma senaste dagarna",
+    "rainfall": "Mycket nederbörd senaste veckorna",
+    "moisture": "Fuktig/vattensjuk mark",
+    "standing_water": "Ihållande stående vatten",
+    "wetland": "Närliggande våtmarker och stående vatten",
+    "forest": "Skogsmark som ger skydd",
+    "season": "Högsäsong för mygg",
+    "snowmelt": "Vårflod / snösmältning",
+    "temp_activity": "Temperatur som gynnar myggaktivitet",
+    "humidity_activity": "Hög luftfuktighet som gynnar aktivitet",
+    "daypart_activity": "Skymning/gryning med hög aktivitet",
+    "terrain_exposure": "Vegetation med lite vind",
+    "water_proximity": "Nära vatten",
 }
 
 NEGATIVE_LABELS = {
-    "wind_suppression": "Wind suppressing mosquito activity",
-    "rain_suppression": "Active rainfall suppressing activity",
-    "dry_air_suppression": "Dry air suppressing activity",
-    "freezing": "Recent freezing conditions",
-    "urban_suppression": "Urban/built-up surroundings",
+    "wind_suppression": "Vind som dämpar myggaktivitet",
+    "rain_suppression": "Aktivt regn som dämpar aktivitet",
+    "dry_air_suppression": "Torr luft som dämpar aktivitet",
+    "freezing": "Nyligt minusgrader",
+    "urban_suppression": "Stadsmiljö",
 }
 
 
@@ -99,8 +100,9 @@ def _daypart_activity_curve(hour: int) -> float:
 
 def compute_population_potential(features: FeatureSet, config: ModelConfig) -> tuple[float, dict[str, float]]:
     weights = config.population_weights or {
-        "temperature": 0.24, "rainfall": 0.24, "moisture": 0.16,
-        "wetland": 0.14, "forest": 0.08, "season": 0.08, "snowmelt": 0.06,
+        "temperature": 0.22, "rainfall": 0.22, "moisture": 0.14,
+        "wetland": 0.13, "forest": 0.07, "season": 0.07, "snowmelt": 0.05,
+        "standing_water": 0.10,
     }
 
     temp_input = features.mean_temperature_14d_c if features.mean_temperature_14d_c is not None else features.current_temperature_c or 10.0
@@ -122,6 +124,8 @@ def compute_population_potential(features: FeatureSet, config: ModelConfig) -> t
     spring_window = bell_curve(features.day_of_year, optimum=135, width=40)
     snowmelt_term = spring_window * (0.35 if features.freezing_recently else 1.0)
 
+    standing_water_term = clamp(features.standing_water_persistence, 0.0, 1.0)
+
     terms = {
         "temperature": temperature_term,
         "rainfall": rainfall_term,
@@ -130,14 +134,15 @@ def compute_population_potential(features: FeatureSet, config: ModelConfig) -> t
         "forest": forest_term,
         "season": season_term,
         "snowmelt": snowmelt_term,
+        "standing_water": standing_water_term,
     }
 
     weighted_sum = sum(terms[k] * weights.get(k, 0.0) for k in terms)
     total_weight = sum(weights.get(k, 0.0) for k in terms) or 1.0
     normalized = clamp(weighted_sum / total_weight, 0.0, 1.0)
 
-    contributions = {k: round(terms[k] * weights.get(k, 0.0) / total_weight * 10, 3) for k in terms}
-    return normalized * 10.0, contributions
+    contributions = {k: round(terms[k] * weights.get(k, 0.0) / total_weight * 100, 3) for k in terms}
+    return normalized * 100.0, contributions
 
 
 def compute_biting_activity(features: FeatureSet, config: ModelConfig) -> tuple[float, dict[str, float]]:
@@ -189,7 +194,7 @@ def compute_biting_activity(features: FeatureSet, config: ModelConfig) -> tuple[
         "daypart_activity": daypart_activity,
         "rain_suppression": rain_suppression,
     }
-    return activity * 10.0, terms
+    return activity * 100.0, terms
 
 
 def compute_exposure(features: FeatureSet, config: ModelConfig, activity_multiplier: float = 1.0) -> tuple[float, dict[str, float]]:
@@ -219,8 +224,8 @@ def compute_exposure(features: FeatureSet, config: ModelConfig, activity_multipl
 
     base_exposure = clamp(0.5 * terrain_exposure + 0.5 * water_term, 0.0, 1.0)
     adjusted = clamp(base_exposure * activity_multiplier, 0.0, 1.5)
-    exposure_0_10 = clamp(adjusted, 0.0, 1.5) * (10.0 / 1.0)
-    exposure_0_10 = clamp(exposure_0_10, 0.0, 10.0)
+    exposure_0_100 = clamp(adjusted, 0.0, 1.5) * 100.0
+    exposure_0_100 = clamp(exposure_0_100, 0.0, 100.0)
 
     terms = {
         "terrain_exposure": terrain_exposure,
@@ -228,7 +233,7 @@ def compute_exposure(features: FeatureSet, config: ModelConfig, activity_multipl
         "activity_multiplier": activity_multiplier,
         "base_exposure_fraction": base_exposure,
     }
-    return exposure_0_10, terms
+    return exposure_0_100, terms
 
 
 def compute_score(
@@ -242,12 +247,12 @@ def compute_score(
     biting_activity, activity_terms = compute_biting_activity(features, config)
     exposure, exposure_terms = compute_exposure(features, config, activity_multiplier)
 
-    # Combine multiplicatively (each normalised 0-1) then rescale to 0-10,
+    # Combine multiplicatively (each normalised 0-1) then rescale to 0-100,
     # which keeps risk low unless population potential, activity AND
     # exposure are all non-trivial -- matching the product-of-factors
     # framing in the spec while avoiding false precision from raw sums.
-    combined_fraction = (population_potential / 10.0) * (biting_activity / 10.0) * clamp(exposure / 10.0, 0.0, 1.0)
-    final_risk = clamp(combined_fraction * 10.0 * 2.6, 0.0, 10.0)
+    combined_fraction = (population_potential / 100.0) * (biting_activity / 100.0) * clamp(exposure / 100.0, 0.0, 1.0)
+    final_risk = clamp(combined_fraction * 100.0 * 2.6, 0.0, 100.0)
 
     return ScoreResult(
         population_potential=round(population_potential, 3),

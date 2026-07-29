@@ -1,15 +1,31 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { MapView } from "./components/MapView";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { ControlBar } from "./components/ControlBar";
 import { Legend } from "./components/Legend";
 import { StatusBanner } from "./components/StatusBanner";
 import { LocationPanel } from "./components/LocationPanel";
 import { useCells, useDailyForDate, useHourlyForHour, useLocationSeries, useManifest, usePlaces } from "./hooks/useForecastData";
+import { useI18n } from "./i18n";
+import type { I18nKey } from "./i18n/types";
 import { nearestCell } from "./lib/api";
 import { clearFetchCache } from "./lib/fetchJsonGz";
 import { finalRiskForActivity } from "./lib/riskModel";
 import { DEFAULT_STATE, parseUrlState, serializeUrlState, type AppState } from "./lib/urlState";
 import type { DailyRecord, LayerKey, ScoreFields } from "./types/forecast";
+
+// maplibre-gl is a sizeable dependency (see vite.config.ts manualChunks) --
+// deferring its import until after the app shell/loading state has
+// rendered keeps it out of the critical first-paint path (requirement:
+// <2s first load, no blank screen).
+const MapView = lazy(() => import("./components/MapView").then((m) => ({ default: m.MapView })));
+
+function MapSkeleton({ label }: { label: string }) {
+  return (
+    <div className="map-skeleton" role="status" aria-live="polite">
+      <div className="map-skeleton-pulse" />
+      <span>{label}</span>
+    </div>
+  );
+}
 
 function addDaysIso(dateIso: string, days: number): string {
   const d = new Date(dateIso + "T00:00:00Z");
@@ -20,6 +36,7 @@ function addDaysIso(dateIso: string, days: number): string {
 const ANIMATION_INTERVAL_MS = 900;
 
 export default function App() {
+  const { t, locale } = useI18n();
   const [refreshKey, setRefreshKey] = useState(0);
   const { data: manifest, loading: manifestLoading, error: manifestError } = useManifest(refreshKey);
   const { data: cells } = useCells(refreshKey);
@@ -29,7 +46,7 @@ export default function App() {
 
   const [selectedLat, setSelectedLat] = useState(initialUrlState.lat ?? DEFAULT_STATE.lat);
   const [selectedLon, setSelectedLon] = useState(initialUrlState.lon ?? DEFAULT_STATE.lon);
-  const [placeName, setPlaceName] = useState<string>("Selected location");
+  const [placeName, setPlaceName] = useState<string>("");
   const [date, setDate] = useState<string>(initialUrlState.date ?? "");
   const [hourOfDay, setHourOfDay] = useState<number>(initialUrlState.hour ?? new Date().getUTCHours());
   const [daypart, setDaypart] = useState<string>(initialUrlState.daypart ?? DEFAULT_STATE.daypart!);
@@ -112,8 +129,8 @@ export default function App() {
   }, [isHourlyDay, hourlyRecords, selectedCell, activeDailyRecord, daypart]);
 
   const activeLabel = isHourlyDay
-    ? `${dayIndex === 0 ? "Today" : "Tomorrow"}, ${String(hourOfDay).padStart(2, "0")}:00 UTC`
-    : `${date} (${daypart})`;
+    ? `${dayIndex === 0 ? t("controlBar.today") : t("controlBar.tomorrow")}, ${String(hourOfDay).padStart(2, "0")}:00 UTC`
+    : `${date} (${t(`daypart.${daypart}` as I18nKey)})`;
 
   // Keep URL query string in sync with app state (replace, not push, to
   // avoid flooding browser history on every slider tick).
@@ -155,52 +172,53 @@ export default function App() {
     }
   }
 
-  const dataQualityWarning =
-    manifest && manifest.data_quality !== "normal"
-      ? "Showing degraded-quality forecast data (see manifest warnings)."
-      : null;
+  const dataQualityWarning = manifest && manifest.data_quality !== "normal" ? t("status.degraded") : null;
 
   const staleWarning = useMemo(() => {
     if (!manifest) return null;
     const generatedAt = new Date(manifest.generated_at).getTime();
     const ageHours = (Date.now() - generatedAt) / 3600000;
     if (ageHours > 12) {
-      return `Forecast data is ${Math.round(ageHours)}h old and may be stale.`;
+      return t("status.stale", { hours: Math.round(ageHours) });
     }
     return null;
-  }, [manifest]);
+  }, [manifest, t]);
 
   function handleRetry() {
     clearFetchCache();
     setRefreshKey((k) => k + 1);
   }
 
-  const loadingBanner = manifestLoading ? "Loading forecast…" : null;
-  const errorBanner = manifestError ? `Could not load forecast: ${manifestError}` : dailyError || hourlyError || null;
+  const loadingBanner = manifestLoading ? t("panel.loading") : null;
+  const errorBanner = manifestError
+    ? t("status.loadFailed", { error: manifestError })
+    : dailyError || hourlyError || null;
 
   return (
     <div className="app-shell">
       <header className="app-header">
         <div className="app-title">
-          Mosquito Risk <span className="subtitle">Sweden &middot; experimental forecast, not a mosquito count</span>
+          {t("app.title")} <span className="subtitle">{t("app.subtitle")}</span>
         </div>
         {manifest && (
           <div style={{ fontSize: "0.72rem", color: "var(--color-text-muted)" }}>
-            Updated {new Date(manifest.generated_at).toLocaleString()}
+            {t("app.updated", { date: new Date(manifest.generated_at).toLocaleString(locale === "sv" ? "sv-SE" : undefined) })}
           </div>
         )}
       </header>
 
       <div className="map-area">
-        <MapView
-          cells={cells ?? []}
-          valuesByCellId={valuesByCellId}
-          layer={layer}
-          selectedLat={selectedLat}
-          selectedLon={selectedLon}
-          onSelectLocation={(lat, lon) => handleSelectLocation(lat, lon)}
-          userLocation={userLocation}
-        />
+        <Suspense fallback={<MapSkeleton label={t("loading.map")} />}>
+          <MapView
+            cells={cells ?? []}
+            valuesByCellId={valuesByCellId}
+            layer={layer}
+            selectedLat={selectedLat}
+            selectedLon={selectedLon}
+            onSelectLocation={(lat, lon) => handleSelectLocation(lat, lon)}
+            userLocation={userLocation}
+          />
+        </Suspense>
 
         <ControlBar
           manifest={manifest}
@@ -218,7 +236,7 @@ export default function App() {
           onLayerChange={setLayer}
           onSelectLocation={(lat, lon) => {
             setUserLocation({ lat, lon });
-            handleSelectLocation(lat, lon, "My location");
+            handleSelectLocation(lat, lon, t("search.myLocation"));
           }}
           animating={animating}
           onToggleAnimation={() => setAnimating((a) => !a)}
@@ -237,7 +255,7 @@ export default function App() {
 
       <div className="panel-area">
         <LocationPanel
-          placeName={placeName}
+          placeName={placeName || t("panel.defaultLocationLabel")}
           latitude={selectedLat}
           longitude={selectedLon}
           cellId={selectedCell?.cell_id ?? null}

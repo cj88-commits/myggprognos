@@ -29,8 +29,8 @@ from config import (
     load_model_config,
 )
 from confidence import compute_confidence
-from explanation import generate_explanation
-from feature_engineering import compute_features
+from explanation import format_factor_strings, generate_explanation
+from feature_engineering import compute_features, precompute_rolling_windows
 from grid import GridCell, generate_sample_grid, load_grid, save_grid
 from model import compute_score, risk_category
 from output import (
@@ -42,6 +42,7 @@ from output import (
     write_hourly_file,
     write_locations_index,
     write_manifest,
+    write_series_shards,
 )
 from static_features import (
     StaticFeatures,
@@ -59,27 +60,29 @@ HISTORY_DAYS_BACK = 21
 
 def merge_weather(history: HourlyWeather, forecast: HourlyWeather) -> HourlyWeather:
     """Concatenate history + forecast series into one continuous timeline,
-    preferring forecast values on overlapping timestamps."""
-    times = list(history.times) + [t for t in forecast.times if t not in set(history.times)]
+    preferring forecast values on overlapping timestamps.
 
-    def field_at(source: HourlyWeather, field_name: str, t: str) -> float | None:
-        try:
-            i = source.times.index(t)
-        except ValueError:
-            return None
-        return getattr(source, field_name)[i]
-
+    Uses a one-time {time: index} lookup per source rather than repeated
+    `list.index()` scans (the latter turns this into an O(n^2) operation
+    per cell, which dominates the whole pipeline's runtime at full-Sweden
+    scale -- ~18k cells x hundreds of hourly timestamps)."""
     fields = [
         "temperature_2m", "relative_humidity_2m", "precipitation",
         "wind_speed_10m", "wind_gusts_10m", "cloud_cover", "soil_moisture",
     ]
+
+    history_index = {t: i for i, t in enumerate(history.times)}
+    forecast_index = {t: i for i, t in enumerate(forecast.times)}
+    sorted_times = sorted(set(history.times) | set(forecast.times))
+
     merged_series: dict[str, list] = {f: [] for f in fields}
-    sorted_times = sorted(set(times))
     for t in sorted_times:
+        f_idx = forecast_index.get(t)
+        h_idx = history_index.get(t)
         for f in fields:
-            value = field_at(forecast, f, t)
-            if value is None:
-                value = field_at(history, f, t)
+            value = getattr(forecast, f)[f_idx] if f_idx is not None else None
+            if value is None and h_idx is not None:
+                value = getattr(history, f)[h_idx]
             merged_series[f].append(value)
 
     return HourlyWeather(
@@ -172,6 +175,18 @@ def run_pipeline(
 
     hour_start = run_time.replace(minute=0, second=0, microsecond=0)
 
+    # Precompute expensive per-cell rolling-window state once (rather than
+    # re-parsing/re-scanning the full weather series on every one of the 49
+    # hourly + 28 daypart compute_features calls below) -- see
+    # feature_engineering.py module docstring. This is the dominant
+    # performance win at full-Sweden (~15-20k cell) scale.
+    rolling_by_cell = {
+        cell_id: precompute_rolling_windows(weather, config.development_base_temperature_c)
+        for cell_id, weather in weather_by_cell.items()
+    }
+
+    series_by_cell: dict[str, dict] = {cell.cell_id: {"daily": [], "hourly": []} for cell in cells}
+
     # --- Hourly (first 48h) ---
     hourly_files: list[str] = []
     for h in range(HOURLY_HORIZON_HOURS + 1):
@@ -181,11 +196,16 @@ def run_pipeline(
             weather = weather_by_cell.get(cell.cell_id)
             if weather is None:
                 continue
-            features = compute_features(static_map[cell.cell_id], weather, target, config.development_base_temperature_c)
+            features = compute_features(
+                static_map[cell.cell_id], weather, target, config.development_base_temperature_c,
+                rolling=rolling_by_cell.get(cell.cell_id),
+            )
             score = compute_score(features, config, "general")
             horizon_hours = max(0.0, (target - run_time).total_seconds() / 3600.0)
             confidence_result = compute_confidence(features, score, config, horizon_hours, is_placeholder)
-            records.append(_record_from_score(cell.cell_id, features, score, confidence_result))
+            record = _record_from_score(cell.cell_id, features, score, confidence_result)
+            records.append(record)
+            series_by_cell[cell.cell_id]["hourly"].append(record)
         hour_label = target.strftime("%Y-%m-%dT%H")
         write_hourly_file(hour_label, records, output_dir)
         hourly_files.append(f"hourly/{hour_label}.json.gz")
@@ -204,7 +224,10 @@ def run_pipeline(
             dayparts = {}
             for part, hour in DAYPART_REPRESENTATIVE_HOUR.items():
                 target = datetime(target_date.year, target_date.month, target_date.day, hour, tzinfo=timezone.utc)
-                features = compute_features(static_map[cell.cell_id], weather, target, config.development_base_temperature_c)
+                features = compute_features(
+                    static_map[cell.cell_id], weather, target, config.development_base_temperature_c,
+                    rolling=rolling_by_cell.get(cell.cell_id),
+                )
                 score = compute_score(features, config, "general")
                 horizon_hours = max(0.0, (target - run_time).total_seconds() / 3600.0)
                 confidence_result = compute_confidence(features, score, config, horizon_hours, is_placeholder)
@@ -243,8 +266,10 @@ def run_pipeline(
                     ],
                     "summary": explanation.summary,
                 },
+                "explanation_text": format_factor_strings(explanation),
             }
             records.append(record)
+            series_by_cell[cell.cell_id]["daily"].append(record)
         write_daily_file(date_str, records, output_dir)
         daily_files.append(f"daily/{date_str}.json.gz")
         daily_records_by_date[date_str] = records
@@ -259,6 +284,7 @@ def run_pipeline(
         raise
 
     write_cells_file(cells, static_map, output_dir)
+    series_files = write_series_shards(series_by_cell, output_dir)
 
     places_path = SAMPLE_DATA_DIR / "places.json" if sample else STATIC_DATA_DIR / "places.json"
     places = []
@@ -282,6 +308,7 @@ def run_pipeline(
         model_version=config.version,
         activities=config.activities,
         warnings=warnings,
+        series_files=series_files,
     )
 
     logger.info("Pipeline complete: %d cells, %d daily files, %d hourly files", len(cells), len(daily_files), len(hourly_files))

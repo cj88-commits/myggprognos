@@ -1,23 +1,29 @@
+import { useI18n } from "../i18n";
+import type { I18nKey } from "../i18n/types";
 import { RISK_CATEGORIES } from "../lib/riskModel";
 import type { LayerKey } from "../types/forecast";
 
-const CONFIDENCE_STOPS = [
-  { label: "Low", color: "#a5262c" },
-  { label: "Med", color: "#d9a441" },
-  { label: "High", color: "#2f6f4f" },
+const CONFIDENCE_STOPS: { key: "low" | "medium" | "high"; color: string }[] = [
+  { key: "low", color: "#d9432e" },
+  { key: "medium", color: "#f2c94c" },
+  { key: "high", color: "#2e8b4f" },
 ];
 
 export function Legend({ layer }: { layer: LayerKey }) {
+  const { t } = useI18n();
+
   const stops =
     layer === "confidence"
-      ? CONFIDENCE_STOPS
-      : RISK_CATEGORIES.map((c) => ({ label: c.label, color: c.color }));
+      ? CONFIDENCE_STOPS.map((s) => ({ label: t(`confidence.${s.key}` as I18nKey), color: s.color }))
+      : RISK_CATEGORIES.map((c) => ({ label: t(`risk.category.${c.key}` as I18nKey), color: c.color }));
 
-  const title = layer === "confidence" ? "Forecast confidence" : "Mosquito risk (0–10)";
+  const title = layer === "confidence" ? t("legend.confidenceTitle") : t("legend.riskTitle");
 
   return (
-    <div className="legend" role="group" aria-label={`Map legend: ${title}`}>
-      <strong>{title}</strong>
+    <details className="legend" open>
+      <summary aria-label={title}>
+        <strong>{title}</strong>
+      </summary>
       <div className="legend-scale">
         {stops.map((stop) => (
           <div className="legend-swatch" key={stop.label}>
@@ -26,6 +32,6 @@ export function Legend({ layer }: { layer: LayerKey }) {
           </div>
         ))}
       </div>
-    </div>
+    </details>
   );
 }

@@ -10,10 +10,9 @@ database_name = "myggprognos-reports"
 database_id = "ab6e5475-646e-402e-ab63-b02e6af48e6c"
 
 [vars]
-# Comma-separated list of origins allowed to call this API. Set to your
-# GitHub Pages URL (and http://localhost:5173 for local dev) via
-# `wrangler secret put` or by editing this file before deploying.
-ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:4173"
+# Comma-separated list of origins allowed to call this API. Includes the
+# live GitHub Pages origin plus localhost dev/preview ports.
+ALLOWED_ORIGINS = "https://cj88-commits.github.io,http://localhost:5173,http://localhost:4173"
 # Non-secret salt for hashing submitter IPs for rate-limiting only; for
 # production prefer `wrangler secret put REPORT_HASH_SALT` instead of
 # committing a real salt here.

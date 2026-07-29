@@ -15,10 +15,15 @@ __pycache__/
 venv/
 
 # Forecast pipeline caches / generated static features (regenerable; see
-# scripts/prepare_grid.py, scripts/prepare_static_features.py).
+# scripts/prepare_grid.py, scripts/prepare_static_features.py). The full
+# ~18k-cell grid.json + cell_features.json are derived from
+# sweden_boundary.geojson (committed) + config.py and cached by
+# forecast.yml via actions/cache, not git -- so they stay out of the repo.
 data/cache/
 data/static/*.tif
 data/static/*.gpkg
+data/static/grid.json
+data/static/cell_features.json
 
 # Pipeline output is produced fresh by forecast.yml (see README "Historical
 # forecast archive"); the committed sample dataset lives under
