@@ -35,6 +35,15 @@ function addDaysIso(dateIso: string, days: number): string {
 
 const ANIMATION_INTERVAL_MS = 900;
 
+// The full production grid is ~18,185 cells; the bundled fallback sample is
+// 5. Anything well below full scale means the site is showing limited
+// example data, not real Sweden-wide coverage -- worth a distinct, explicit
+// message rather than lumping it into the generic "degraded quality"
+// warning, so a sparse/placeholder dataset is never mistaken for complete
+// coverage (see also MapView's neutral basemap, which avoids the map
+// itself looking like a risk choropleth when it isn't one).
+const FULL_COVERAGE_MIN_CELLS = 1000;
+
 export default function App() {
   const { t, locale } = useI18n();
   const [refreshKey, setRefreshKey] = useState(0);
@@ -172,7 +181,16 @@ export default function App() {
     }
   }
 
-  const dataQualityWarning = manifest && manifest.data_quality !== "normal" ? t("status.degraded") : null;
+  const dataQualityWarning = useMemo(() => {
+    if (!manifest) return null;
+    if (manifest.cell_count < FULL_COVERAGE_MIN_CELLS) {
+      return t("status.sampleData", { count: manifest.cell_count });
+    }
+    if (manifest.data_quality !== "normal") {
+      return t("status.degraded");
+    }
+    return null;
+  }, [manifest, t]);
 
   const staleWarning = useMemo(() => {
     if (!manifest) return null;
@@ -247,7 +265,11 @@ export default function App() {
         {(loadingBanner || errorBanner || dataQualityWarning || staleWarning) && (
           <StatusBanner
             message={errorBanner ?? loadingBanner ?? dataQualityWarning ?? staleWarning ?? ""}
-            tone={errorBanner ? "error" : "info"}
+            // Sample/limited-coverage data gets the same visually-prominent
+            // "error" treatment as a real error -- this is a trust-critical
+            // notice (don't let sparse example data read as full coverage),
+            // not a minor informational aside.
+            tone={errorBanner || (manifest && manifest.cell_count < FULL_COVERAGE_MIN_CELLS) ? "error" : "info"}
             onRetry={errorBanner ? handleRetry : undefined}
           />
         )}

@@ -7,11 +7,16 @@ import type { CellRecord, LayerKey } from "../types/forecast";
 const SWEDEN_CENTER: [number, number] = [17.5, 62.5];
 const SWEDEN_INITIAL_ZOOM = 4.2;
 
-// MapLibre's free demo style requires no API key, which keeps the MVP
-// operable at zero cost. It is intentionally minimal -- production
-// deployments may want to swap in a richer free-tier style (e.g. from
-// MapTiler or Stadia Maps) via VITE_MAP_STYLE_URL; see README.
-const DEFAULT_STYLE_URL = "https://demotiles.maplibre.org/style.json";
+// CARTO's free, keyless "Positron" style: a neutral light basemap (roads,
+// place labels, muted land/water) meant specifically for data overlays.
+// MapLibre's own demotiles.maplibre.org style was used previously, but its
+// "countries" layer fills each country with a distinct, fully-saturated
+// flat colour (Sweden purple, Norway green, Finland orange, ...) for demo
+// purposes -- easily mistaken for graded risk data, and it visually
+// drowned out the sparse sample-mode risk circles entirely. Positron has
+// no such per-country fills. Override via VITE_MAP_STYLE_URL for a richer
+// style (e.g. MapTiler, Stadia Maps) if desired; see README.
+const DEFAULT_STYLE_URL = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
 
 // Smooth 0-100 green -> yellow-green -> yellow -> orange -> red ramp (see
 // lib/riskModel.ts::RISK_COLOR_STOPS, shared with any other continuous risk
@@ -92,6 +97,10 @@ export function MapView({
 
     const styleUrl = (import.meta.env.VITE_MAP_STYLE_URL as string | undefined) || DEFAULT_STYLE_URL;
 
+    // Attribution comes from the style's own vector source (its tilejson
+    // carries "© OpenStreetMap contributors © CARTO"), picked up
+    // automatically by the default AttributionControl -- no manual
+    // attribution string needed here.
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: styleUrl,

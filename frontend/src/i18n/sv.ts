@@ -117,6 +117,8 @@ const sv = {
 
   "status.retry": "Försök igen",
   "status.degraded": "Visar prognosdata med sänkt kvalitet (se manifestvarningar).",
+  "status.sampleData":
+    "Visar exempeldata för endast {count} platser — inte den fullständiga Sverigetäckningen.",
   "status.stale": "Prognosdata är {hours} timmar gammal och kan vara inaktuell.",
   "status.loadFailed": "Kunde inte läsa in prognosen: {error}",
 

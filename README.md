@@ -153,8 +153,12 @@ per selection instead of 56 files.
   and a DEM (see [below](#static-geographic-data)); **not bundled** in this repo. A deterministic placeholder
   generator is used until real layers are configured. (The *boundary* used for land/ocean filtering is real;
   only per-cell land-cover attributes like forest/wetland fraction are placeholders.)
-- **Basemap** — MapLibre's free, keyless [demo tiles](https://demotiles.maplibre.org/) by default (simplified);
-  swap in a richer free-tier style via `VITE_MAP_STYLE_URL` (e.g. MapTiler, Stadia Maps).
+- **Basemap** — [CARTO Positron](https://github.com/CartoDB/basemap-styles) by default: a free, keyless, neutral
+  light style (roads, place labels, muted land/water) meant for data overlays like the risk layer. (MapLibre's
+  own `demotiles.maplibre.org` demo style was used earlier in development, but its "countries" layer fills
+  every country with a distinct, fully-saturated flat colour for demo purposes — easily mistaken for graded
+  risk data, and it visually drowned out the sample-mode risk circles. Positron has no such per-country
+  fills.) Swap in a richer free-tier style via `VITE_MAP_STYLE_URL` (e.g. MapTiler, Stadia Maps) if desired.
 
 ### Full Sweden grid
 
@@ -196,7 +200,9 @@ urban near known city centers). Clearly a placeholder, not measured data.
 - Wikidata (`data/static/places.json` municipality coordinates): CC0 — no attribution legally required, but
   see [Wikidata's data reuse guidance](https://www.wikidata.org/wiki/Wikidata:Licensing).
 - `datasets/geo-countries` (`data/static/sweden_boundary.geojson`): public-domain-style, Natural-Earth-derived.
-- This repository's own code has no other third-party data bundled beyond MapLibre's demo style.
+- CARTO Positron basemap: free, attribution ("© OpenStreetMap contributors © CARTO") shown automatically via
+  MapLibre's attribution control, sourced from the style itself.
+- This repository's own code has no other third-party data bundled.
 
 ## Local setup
 
@@ -388,8 +394,12 @@ per-locale explanation arrays — a natural follow-up, not implemented here.
 - **Pipeline fails sanity checks** — check the Action logs; common causes are a large cell-count drop
   (partial weather fetch failure) or an out-of-range score, both of which intentionally abort *before*
   publishing so the live site keeps the last good forecast.
-- **Map basemap looks very plain** — that's the free, keyless MapLibre demo style; set
-  `VITE_MAP_STYLE_URL` to a richer style for production.
+- **Map basemap looks very plain** — that's the free, keyless CARTO Positron style, chosen deliberately as a
+  neutral canvas for the risk overlay; set `VITE_MAP_STYLE_URL` to a richer style if desired.
+- **Map shows only ~5 scattered dots, or a banner says "showing example data"** — the site is serving the
+  bundled 5-cell sample dataset, not the full ~18k-cell production grid. This happens if `forecast.yml`
+  hasn't run yet (or its last run failed) — trigger it manually from the Actions tab, or wait for its next
+  6-hourly run.
 - **Reporting form says "offline demo mode"** — `VITE_REPORT_API_URL` isn't set; the rest of the app still
   works normally.
 - **D1 migration errors locally** — delete `worker/.wrangler/state` and re-run

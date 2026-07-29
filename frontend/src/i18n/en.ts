@@ -43,6 +43,9 @@ const en: Partial<I18nDict> = {
   "panel.reportButton": "Report mosquitoes here",
   "panel.shareButton": "Share this view",
   "panel.shareCopied": "Link copied!",
+
+  "status.degraded": "Showing degraded-quality forecast data (see manifest warnings).",
+  "status.sampleData": "Showing example data for only {count} locations — not full Sweden coverage.",
 };
 
 export default en;
