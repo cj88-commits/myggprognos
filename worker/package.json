@@ -12,9 +12,9 @@
     "db:migrate:remote": "wrangler d1 migrations apply mosquito-reports --remote"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20241127.0",
+    "@cloudflare/workers-types": "^5.20260729.1",
     "typescript": "^5.6.3",
     "vitest": "^2.1.8",
-    "wrangler": "^3.90.0"
+    "wrangler": "^4.115.0"
   }
 }
