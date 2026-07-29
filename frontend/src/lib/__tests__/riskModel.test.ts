@@ -19,6 +19,19 @@ describe("riskCategory", () => {
     expect(riskCategory(80).key).toBe("very_high");
     expect(riskCategory(100).key).toBe("very_high");
   });
+
+  it("handles fractional scores between integer bounds", () => {
+    // Regression test: real scores are floats (e.g. 19.13), not just the
+    // exact integer band edges. A prior implementation used `min <= x <=
+    // max` against adjacent integer bounds (...19 / 20...), so any
+    // fractional value strictly between two bands matched nothing and
+    // silently fell back to the *last* (very_high) entry.
+    expect(riskCategory(19.13).key).toBe("very_low");
+    expect(riskCategory(19.99).key).toBe("very_low");
+    expect(riskCategory(39.5).key).toBe("low");
+    expect(riskCategory(59.9).key).toBe("moderate");
+    expect(riskCategory(79.99).key).toBe("high");
+  });
 });
 
 describe("confidenceCategory", () => {

@@ -2,9 +2,23 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from confidence import compute_confidence
+from confidence import compute_confidence, confidence_label
 from feature_engineering import compute_features
 from model import compute_score
+
+
+def test_confidence_label_handles_fractional_scores_between_integer_bounds():
+    # Regression test: real confidence values are floats, not just the exact
+    # integer band edges. A prior implementation required `lo <= x <= hi`
+    # against adjacent integer bounds (...39 / 40...), so any fractional
+    # value strictly between two bands (e.g. 39.5, 69.9) matched nothing and
+    # silently fell back to whatever band happened to be checked last.
+    assert confidence_label(0.0) == "Låg"
+    assert confidence_label(39.5) == "Låg"
+    assert confidence_label(40.0) == "Medel"
+    assert confidence_label(69.9) == "Medel"
+    assert confidence_label(70.0) == "Hög"
+    assert confidence_label(100.0) == "Hög"
 
 
 def _features_and_score(sample_static, synthetic_weather, model_config, hour=14):

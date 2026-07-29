@@ -28,6 +28,18 @@ def _horizon_score(horizon_hours: float) -> float:
     return clamp(1.0 - 0.65 * (horizon_hours / 168.0), 0.25, 1.0)
 
 
+def confidence_label(confidence: float) -> str:
+    """Pick the highest-lo band the score clears, rather than requiring
+    `lo <= x <= hi` -- with adjacent integer bounds (e.g. ...39 / 40...) any
+    fractional score landing in the gap (e.g. 39.5) would otherwise match no
+    band at all."""
+    label = CONFIDENCE_LABELS[0][3]
+    for lo, _hi, _key, lab in CONFIDENCE_LABELS:
+        if confidence >= lo:
+            label = lab
+    return label
+
+
 def _component_agreement(score: ScoreResult) -> float:
     """High agreement (1.0) when population/activity/exposure sub-scores
     point the same direction; lower when they strongly disagree (e.g. very
@@ -102,15 +114,9 @@ def compute_confidence(
     if agreement < 0.6:
         reasons.append("Modellens delkomponenter är mer oense än vanligt för denna plats/tid.")
 
-    label = CONFIDENCE_LABELS[0][3]
-    for lo, hi, _key, lab in CONFIDENCE_LABELS:
-        if lo <= confidence <= hi:
-            label = lab
-            break
-
     return ConfidenceResult(
         confidence=round(confidence, 3),
-        label=label,
+        label=confidence_label(confidence),
         components=components,
         low_confidence_reasons=reasons,
     )

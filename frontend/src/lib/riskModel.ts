@@ -43,9 +43,16 @@ export const RISK_CATEGORIES: { min: number; max: number; key: RiskCategoryKey; 
 ];
 
 export function riskCategory(score: number) {
-  return (
-    RISK_CATEGORIES.find((c) => score >= c.min && score <= c.max) ?? RISK_CATEGORIES[RISK_CATEGORIES.length - 1]
-  );
+  // Pick the highest-min band the score clears, rather than requiring
+  // `min <= x <= max` -- with adjacent integer bounds (e.g. ...19 / 20...)
+  // any fractional score landing in the gap (e.g. 19.13) would otherwise
+  // match no band and fall back to the *last* (very_high) entry, regardless
+  // of the actual score. Mirrors forecast/src/model.py::risk_category.
+  let result = RISK_CATEGORIES[0];
+  for (const c of RISK_CATEGORIES) {
+    if (score >= c.min) result = c;
+  }
+  return result;
 }
 
 // Smooth (non-banded) 0-100 -> color interpolation used by the map and any

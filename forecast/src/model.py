@@ -270,7 +270,13 @@ def compute_score(
 def risk_category(score: float) -> tuple[str, str]:
     from config import RISK_CATEGORIES
 
-    for lo, hi, key, label in RISK_CATEGORIES:
-        if lo <= score <= hi:
-            return key, label
-    return RISK_CATEGORIES[-1][2], RISK_CATEGORIES[-1][3]
+    # Pick the highest-lo band the score clears, rather than requiring
+    # `lo <= x <= hi` -- with adjacent integer bounds (e.g. ...19 / 20...)
+    # any fractional score landing in the gap (e.g. 19.13) would otherwise
+    # match no band and silently fall back to the *last* (very_high) band,
+    # regardless of the actual score.
+    key, label = RISK_CATEGORIES[0][2], RISK_CATEGORIES[0][3]
+    for lo, _hi, band_key, band_label in RISK_CATEGORIES:
+        if score >= lo:
+            key, label = band_key, band_label
+    return key, label

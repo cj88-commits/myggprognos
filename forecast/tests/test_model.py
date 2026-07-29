@@ -52,6 +52,20 @@ def test_risk_category_boundaries():
     assert risk_category(100.0)[0] == "very_high"
 
 
+def test_risk_category_handles_fractional_scores_between_integer_bounds():
+    # Regression test: real scores are floats (e.g. 19.13), not just the
+    # exact integer band edges. A prior implementation required
+    # `lo <= score <= hi` against adjacent integer bounds (...19 / 20...),
+    # so any fractional value strictly between two bands (e.g. 19.13,
+    # 39.5, 59.9, 79.99) matched nothing and silently fell back to the
+    # *last* band (very_high) regardless of the actual score.
+    assert risk_category(19.13)[0] == "very_low"
+    assert risk_category(19.99)[0] == "very_low"
+    assert risk_category(39.5)[0] == "low"
+    assert risk_category(59.9)[0] == "moderate"
+    assert risk_category(79.99)[0] == "high"
+
+
 def _features_at(sample_static, synthetic_weather, hour: int, model_config):
     target = datetime(2026, 7, 21, hour, tzinfo=timezone.utc)
     return compute_features(sample_static, synthetic_weather, target, model_config.development_base_temperature_c)
