@@ -1,0 +1,62 @@
+[
+  {
+    "cell_id": "SE_STHLM",
+    "forest_fraction": 0.337,
+    "wetland_fraction": 0.067,
+    "urban_fraction": 0.546,
+    "water_fraction": 0.051,
+    "distance_to_water_km": 3.36,
+    "elevation_m": 150.5,
+    "slope_deg": 8.29,
+    "coastal_exposure": 0.401,
+    "water_body_density": 0.392
+  },
+  {
+    "cell_id": "SE_FOREST",
+    "forest_fraction": 0.578,
+    "wetland_fraction": 0.163,
+    "urban_fraction": 0.173,
+    "water_fraction": 0.061,
+    "distance_to_water_km": 1.12,
+    "elevation_m": 183.1,
+    "slope_deg": 6.21,
+    "coastal_exposure": 0.829,
+    "water_body_density": 0.457
+  },
+  {
+    "cell_id": "SE_WETLAND",
+    "forest_fraction": 0.392,
+    "wetland_fraction": 0.123,
+    "urban_fraction": 0.101,
+    "water_fraction": 0.099,
+    "distance_to_water_km": 7.78,
+    "elevation_m": 349.5,
+    "slope_deg": 5.57,
+    "coastal_exposure": 0.48,
+    "water_body_density": 0.19
+  },
+  {
+    "cell_id": "SE_COAST",
+    "forest_fraction": 0.211,
+    "wetland_fraction": 0.136,
+    "urban_fraction": 0.45,
+    "water_fraction": 0.076,
+    "distance_to_water_km": 3.84,
+    "elevation_m": 378.2,
+    "slope_deg": 5.17,
+    "coastal_exposure": 0.45,
+    "water_body_density": 0.482
+  },
+  {
+    "cell_id": "SE_NORTH",
+    "forest_fraction": 0.336,
+    "wetland_fraction": 0.105,
+    "urban_fraction": 0.3,
+    "water_fraction": 0.106,
+    "distance_to_water_km": 7.11,
+    "elevation_m": 331.5,
+    "slope_deg": 8.42,
+    "coastal_exposure": 0.343,
+    "water_body_density": 0.412
+  }
+]

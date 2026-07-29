@@ -1,0 +1,20 @@
+name = "mosquito-risk-reports"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# Free-tier friendly: D1 + Workers both have generous free quotas, so this
+# API costs $0/month at MVP traffic levels.
+[[d1_databases]]
+binding = "DB"
+database_name = "mosquito-reports"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+
+[vars]
+# Comma-separated list of origins allowed to call this API. Set to your
+# GitHub Pages URL (and http://localhost:5173 for local dev) via
+# `wrangler secret put` or by editing this file before deploying.
+ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:4173"
+# Non-secret salt for hashing submitter IPs for rate-limiting only; for
+# production prefer `wrangler secret put REPORT_HASH_SALT` instead of
+# committing a real salt here.
+REPORT_HASH_SALT = "change-me-in-production"

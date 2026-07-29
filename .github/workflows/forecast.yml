@@ -1,0 +1,104 @@
+name: Forecast Pipeline
+
+on:
+  schedule:
+    # Every 6 hours, matching FORECAST_UPDATE_INTERVAL_HOURS in forecast/src/config.py
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      sample:
+        description: "Use the small sample grid + synthetic weather instead of the full Sweden grid + Open-Meteo"
+        type: boolean
+        default: false
+
+# Never run two forecast generations at once (a scheduled run and a manual
+# dispatch could otherwise race and interleave writes); queue rather than
+# cancel so a manually triggered run still completes.
+concurrency:
+  group: forecast-pipeline
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  run-forecast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: forecast/requirements.txt
+
+      - run: pip install -r requirements.txt
+        working-directory: forecast
+
+      # Grid geometry and static features are deterministic and expensive
+      # to recompute; cache them so the scheduled run only regenerates when
+      # the resolution/config actually changes (see forecast/src/config.py).
+      - name: Cache static grid + features
+        id: static-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/static/grid.json
+            data/static/cell_features.json
+          key: static-grid-v1-${{ hashFiles('forecast/src/config.py') }}
+
+      - name: Prepare grid (cache miss only)
+        if: steps.static-cache.outputs.cache-hit != 'true'
+        run: python scripts/prepare_grid.py
+
+      - name: Prepare static features (cache miss only)
+        if: steps.static-cache.outputs.cache-hit != 'true'
+        run: python scripts/prepare_static_features.py
+
+      - name: Run forecast pipeline
+        id: run
+        env:
+          OPEN_METEO_BASE_URL: ${{ vars.OPEN_METEO_BASE_URL }}
+        run: |
+          if [ "${{ inputs.sample }}" = "true" ]; then
+            python scripts/run_forecast.py --sample --verbose
+          else
+            python scripts/run_forecast.py --verbose
+          fi
+
+      - name: Check for changes
+        id: changes
+        run: |
+          git add data/generated data/static
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit and push updated forecast
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          git config user.name "mosquito-risk-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git commit -m "Update forecast $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git push
+
+      # Retain a copy of every run's full output as a workflow artifact for
+      # historical/evaluation purposes (see README "Historical forecast
+      # archive"), separate from the always-latest copy committed above.
+      - name: Upload forecast artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: forecast-${{ github.run_id }}
+          path: data/generated/latest
+          retention-days: 90
+
+      - name: Trigger Pages deployment
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy-pages.yml --ref ${{ github.ref_name }}

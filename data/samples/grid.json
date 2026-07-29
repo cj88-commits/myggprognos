@@ -1,0 +1,32 @@
+[
+  {
+    "cell_id": "SE_STHLM",
+    "latitude": 59.3293,
+    "longitude": 18.0686,
+    "region": "Svealand"
+  },
+  {
+    "cell_id": "SE_FOREST",
+    "latitude": 59.6749,
+    "longitude": 14.5211,
+    "region": "Svealand"
+  },
+  {
+    "cell_id": "SE_WETLAND",
+    "latitude": 58.69,
+    "longitude": 16.12,
+    "region": "Gotaland"
+  },
+  {
+    "cell_id": "SE_COAST",
+    "latitude": 57.7089,
+    "longitude": 11.9746,
+    "region": "Gotaland"
+  },
+  {
+    "cell_id": "SE_NORTH",
+    "latitude": 65.5848,
+    "longitude": 22.1567,
+    "region": "Norrland"
+  }
+]

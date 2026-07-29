@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+.wrangler/
+
+# Build output
+frontend/dist/
+worker/dist/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+
+# Forecast pipeline caches / generated static features (regenerable; see
+# scripts/prepare_grid.py, scripts/prepare_static_features.py).
+data/cache/
+data/static/*.tif
+data/static/*.gpkg
+
+# Pipeline output is produced fresh by forecast.yml (see README "Historical
+# forecast archive"); the committed sample dataset lives under
+# frontend/public/data/latest instead, so the repo stays runnable without
+# a pipeline run.
+data/generated/
+
+# Claude Code local session settings (not part of the project)
+.claude/
+
+# Environment / secrets
+.env
+.env.local
+*.local
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.log
+
+# Coverage
+coverage/

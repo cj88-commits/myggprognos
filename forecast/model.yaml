@@ -1,0 +1,82 @@
+# Mosquito Risk model configuration
+#
+# This file is the single source of truth for tunable weights and thresholds
+# used by the rule-based scoring model in forecast/src/model.py. Keep all
+# "magic numbers" here rather than hard-coded in the pipeline so that model
+# behaviour can be reviewed and adjusted without touching code.
+
+model:
+  version: "0.1.0"
+
+  # Base temperature (Celsius) above which mosquito development accumulates.
+  development_base_temperature_c: 10
+
+  # Weights for the "population potential" component. Should sum to ~1.0;
+  # they are applied to bell/sigmoid-transformed sub-scores (0-1 each).
+  population_weights:
+    temperature: 0.24
+    rainfall: 0.24
+    moisture: 0.16
+    wetland: 0.14
+    forest: 0.08
+    season: 0.08
+    snowmelt: 0.06
+
+  # Parameters for the "biting activity" component (temperature, humidity,
+  # wind, daylight/daypart, rain suppression).
+  activity:
+    optimum_temperature_c: 23
+    temperature_width: 10
+    wind_half_suppression_ms: 3.5
+    wind_full_suppression_ms: 9.0
+    minimum_humidity_percent: 35
+    optimum_humidity_percent: 75
+    rain_suppression_mm_per_hour: 1.0
+
+  # Parameters for the "exposure" component (terrain + proximity to water).
+  exposure:
+    water_proximity_half_distance_km: 1.5
+    wetland_exposure_weight: 0.35
+    forest_exposure_weight: 0.25
+    water_exposure_weight: 0.25
+    urban_exposure_weight: -0.15
+    base_exposure: 0.5
+
+# Activity-adjusted exposure multipliers. These are illustrative,
+# transparent multipliers, not independently validated biological models.
+activities:
+  general: 1.0
+  running: 0.75
+  hiking: 1.15
+  camping: 1.35
+  fishing: 1.4
+  gardening: 1.05
+  outdoor_dining: 1.1
+
+# Weights used when combining confidence sub-scores (0-1 each) into the
+# final confidence score (0-1).
+confidence:
+  horizon_weight: 0.30
+  weather_completeness_weight: 0.20
+  static_data_quality_weight: 0.15
+  component_agreement_weight: 0.15
+  report_support_weight: 0.10
+  fallback_penalty_weight: 0.10
+
+# Rules for blending user reports into the "report-adjusted" risk layer.
+# Report weight increases with sample size but is always capped, and a
+# single/lone report never changes the forecast.
+report_adjustment:
+  model_weight_default: 1.0
+  tiers:
+    - min_reports: 3
+      max_reports: 5
+      max_report_weight: 0.10
+    - min_reports: 6
+      max_reports: 15
+      max_report_weight: 0.20
+    - min_reports: 16
+      max_reports: null
+      max_report_weight: 0.30
+  max_report_age_hours: 12
+  relevance_radius_km: 15
