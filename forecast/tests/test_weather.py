@@ -43,10 +43,12 @@ def _valid_payload_for(cells: list[GridCell]) -> list[dict]:
     ]
 
 
-def _provider_with_transport(transport: _MockTransport, tmp_path) -> OpenMeteoProvider:
+def _provider_with_transport(transport: _MockTransport, tmp_path, **overrides) -> OpenMeteoProvider:
     client = httpx.Client(transport=transport)
     cache = DiskCache(directory=tmp_path, ttl_s=3600)
-    return OpenMeteoProvider(cache=cache, client=client, max_retries=2, backoff_base_s=0.001)
+    kwargs = {"cache": cache, "client": client, "max_retries": 2, "backoff_base_s": 0.001, "pacing_s": 0.0, "rate_limit_backoff_s": 0.001}
+    kwargs.update(overrides)
+    return OpenMeteoProvider(**kwargs)
 
 
 def test_fetch_forecast_parses_valid_response(tmp_path):
@@ -64,6 +66,23 @@ def test_fetch_forecast_parses_valid_response(tmp_path):
 def test_fetch_forecast_retries_on_transient_failure_then_succeeds(tmp_path):
     cells = [GridCell(cell_id="A", latitude=59.3, longitude=18.0)]
     transport = _MockTransport([(500, {"error": True, "reason": "server error"}), (200, _valid_payload_for(cells))])
+    provider = _provider_with_transport(transport, tmp_path)
+
+    result = provider.fetch_forecast(cells, date(2026, 7, 20), date(2026, 7, 20))
+
+    assert "A" in result
+    assert transport.calls == 2
+
+
+def test_fetch_forecast_retries_longer_on_rate_limit_then_succeeds(tmp_path):
+    # Regression test: production full-Sweden runs were getting HTTP 429
+    # (rate limited) from Open-Meteo's archive API on nearly every batch,
+    # and the generic short exponential backoff (1s/2s/4s...) never gave
+    # the quota window time to reset, so every batch kept failing for the
+    # entire run. A 429 must take the longer, rate-limit-specific backoff
+    # path rather than the generic one.
+    cells = [GridCell(cell_id="A", latitude=59.3, longitude=18.0)]
+    transport = _MockTransport([(429, {"error": True, "reason": "rate limited"}), (200, _valid_payload_for(cells))])
     provider = _provider_with_transport(transport, tmp_path)
 
     result = provider.fetch_forecast(cells, date(2026, 7, 20), date(2026, 7, 20))

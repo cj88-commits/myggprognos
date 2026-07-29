@@ -48,6 +48,18 @@ WEATHER_BATCH_SIZE = int(os.environ.get("WEATHER_BATCH_SIZE", "50"))
 WEATHER_REQUEST_TIMEOUT_S = float(os.environ.get("WEATHER_REQUEST_TIMEOUT_S", "20"))
 WEATHER_MAX_RETRIES = int(os.environ.get("WEATHER_MAX_RETRIES", "4"))
 WEATHER_BACKOFF_BASE_S = float(os.environ.get("WEATHER_BACKOFF_BASE_S", "1.0"))
+# Proactive, fixed delay before every real (non-cached) request, spacing
+# consecutive batches out regardless of success/failure. Discovered
+# necessary in production: firing ~700+ batched requests back-to-back at
+# full-Sweden (~18k cell) scale gets Open-Meteo's free archive API to
+# rate-limit (HTTP 429) almost every request, and short exponential
+# backoff alone just re-hits the same quota window without ever letting it
+# reset -- see WEATHER_RATE_LIMIT_BACKOFF_S below.
+WEATHER_REQUEST_PACING_S = float(os.environ.get("WEATHER_REQUEST_PACING_S", "2.0"))
+# Backoff specifically for HTTP 429 (rate limited), used instead of the
+# generic exponential backoff above -- a 429 means "over quota right now",
+# so a 1s/2s/4s ramp is nearly useless; this waits much longer per attempt.
+WEATHER_RATE_LIMIT_BACKOFF_S = float(os.environ.get("WEATHER_RATE_LIMIT_BACKOFF_S", "30.0"))
 WEATHER_CACHE_TTL_S = int(os.environ.get("WEATHER_CACHE_TTL_S", "3600"))
 WEATHER_CACHE_DIR = Path(
     os.environ.get("WEATHER_CACHE_DIR", str(DATA_DIR / "cache" / "weather"))

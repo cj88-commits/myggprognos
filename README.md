@@ -259,9 +259,25 @@ Two optimisations make the ~18k-cell grid practical to (re)compute every 6 hours
   windows on every call.
 
 With both in place, a full pipeline run over all ~18,000 cells (synthetic weather, to isolate CPU cost from
-network time) completes in **about 6 minutes** — comfortably inside GitHub Actions' job limits, with live
-Open-Meteo network calls (~700-800 batched HTTP requests) expected to dominate total wall-clock time in
-production rather than the feature/scoring computation itself.
+network time) completes in **about 6 minutes** — comfortably inside GitHub Actions' job limits.
+
+### Open-Meteo rate limiting at full-Sweden scale
+
+The first live full-grid run (~700-800 batched HTTP requests, no pacing between them) got rate-limited (HTTP
+429) by Open-Meteo's free archive API on nearly every request, and ran for over 2 hours before the job died
+without completing — the original short exponential backoff (1s/2s/4s...) just re-hit the same quota window
+on every retry instead of ever letting it reset. Fixed in `forecast/src/weather.py::OpenMeteoProvider`:
+
+- **Proactive pacing** (`WEATHER_REQUEST_PACING_S`, default 2s) — a fixed delay before every real (non-cached)
+  request, spacing consecutive batches out so the rate limit is never tripped in the first place, rather than
+  only reacting after the fact.
+- **Rate-limit-specific backoff** (`WEATHER_RATE_LIMIT_BACKOFF_S`, default 30s) — HTTP 429 specifically now
+  gets a much longer, linearly-scaling wait instead of the generic exponential backoff used for other
+  transient errors, as a safety net for occasional bursts pacing alone doesn't prevent.
+
+Verified against the live API with a 150-cell subset (3 batches each direction): all 6 requests succeeded on
+the first attempt with zero 429s. Expect full-grid production runs (~728 requests × ~2-3s each) to take
+roughly 30-45 minutes end-to-end, dominated by this deliberate pacing rather than the ~6 minute CPU cost.
 
 ## GitHub Actions setup
 

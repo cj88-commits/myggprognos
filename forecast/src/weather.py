@@ -27,6 +27,8 @@ from config import (
     WEATHER_CACHE_DIR,
     WEATHER_CACHE_TTL_S,
     WEATHER_MAX_RETRIES,
+    WEATHER_RATE_LIMIT_BACKOFF_S,
+    WEATHER_REQUEST_PACING_S,
     WEATHER_REQUEST_TIMEOUT_S,
 )
 from grid import GridCell
@@ -160,6 +162,8 @@ class OpenMeteoProvider:
         timeout_s: float = WEATHER_REQUEST_TIMEOUT_S,
         max_retries: int = WEATHER_MAX_RETRIES,
         backoff_base_s: float = WEATHER_BACKOFF_BASE_S,
+        pacing_s: float = WEATHER_REQUEST_PACING_S,
+        rate_limit_backoff_s: float = WEATHER_RATE_LIMIT_BACKOFF_S,
         cache: DiskCache | None = None,
         client: httpx.Client | None = None,
     ):
@@ -169,6 +173,8 @@ class OpenMeteoProvider:
         self.timeout_s = timeout_s
         self.max_retries = max_retries
         self.backoff_base_s = backoff_base_s
+        self.pacing_s = pacing_s
+        self.rate_limit_backoff_s = rate_limit_backoff_s
         self.cache = cache or DiskCache()
         self._client = client
 
@@ -180,6 +186,13 @@ class OpenMeteoProvider:
         cached = self.cache.get(cache_key)
         if cached is not None:
             return cached
+
+        # Proactive pacing (once per call, not per retry -- retries already
+        # have their own backoff below): spaces consecutive *different*
+        # batch requests out so we don't trip the rate limit in the first
+        # place. See WEATHER_REQUEST_PACING_S in config.py.
+        if self.pacing_s > 0:
+            time.sleep(self.pacing_s)
 
         last_exc: Exception | None = None
         client = self._get_client()
@@ -195,12 +208,19 @@ class OpenMeteoProvider:
                     return payload
                 except (httpx.TimeoutException, httpx.TransportError, httpx.HTTPStatusError, WeatherValidationError) as exc:
                     last_exc = exc
+                    is_rate_limited = isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 429
                     if attempt < self.max_retries:
-                        sleep_s = self.backoff_base_s * (2**attempt)
+                        if is_rate_limited:
+                            # A 429 means "over quota right now" -- a short
+                            # 1s/2s/4s ramp just re-hits the same window.
+                            sleep_s = self.rate_limit_backoff_s * (attempt + 1)
+                        else:
+                            sleep_s = self.backoff_base_s * (2**attempt)
                         logger.warning(
-                            "Weather request failed (attempt %d/%d): %s. Retrying in %.1fs",
+                            "Weather request failed (attempt %d/%d)%s: %s. Retrying in %.1fs",
                             attempt + 1,
                             self.max_retries + 1,
+                            " [rate limited]" if is_rate_limited else "",
                             exc,
                             sleep_s,
                         )
