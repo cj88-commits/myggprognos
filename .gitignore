@@ -25,11 +25,12 @@ data/static/*.gpkg
 data/static/grid.json
 data/static/cell_features.json
 
-# Pipeline output is produced fresh by forecast.yml (see README "Historical
-# forecast archive"); the committed sample dataset lives under
-# frontend/public/data/latest instead, so the repo stays runnable without
-# a pipeline run.
-data/generated/
+# NOTE: data/generated/ is intentionally NOT ignored. forecast.yml commits
+# data/generated/latest on every run (see its "Commit and push updated
+# forecast" step) and deploy-pages.yml reads it straight from the repo to
+# bundle with the site; ignoring it here silently broke that commit step
+# (git add failed on an explicitly-ignored path) and left production
+# permanently serving the small sample dataset from frontend/public/data/latest.
 
 # Claude Code local session settings (not part of the project)
 .claude/
