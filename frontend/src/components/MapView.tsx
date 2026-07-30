@@ -38,36 +38,48 @@ const CONFIDENCE_COLOR_EXPRESSION: maplibregl.ExpressionSpecification = [
   100, "#1c4a32",
 ];
 
-// Must match forecast/src/config.py::GRID_RESOLUTION_KM -- each cell is
-// rendered as a square this wide/tall (in km) rather than a fixed-pixel
-// circle marker, so adjacent cells tile edge-to-edge with no gaps and the
-// grid reads as a continuous coloured surface (a real choropleth) instead
-// of a sparse scatter of dots with basemap showing through between them.
+// Must match forecast/src/config.py::GRID_RESOLUTION_KM. Rendered as
+// overlapping, blurred circles (not tiled squares -- tried first, but
+// produced a hard-edged "Minecraft blocks" look) sized generously larger
+// than the actual 5km spacing so neighbouring cells blend into a
+// continuous, smooth-looking colour gradient, closer to a typical weather
+// heat map than a literal grid.
 const GRID_CELL_SIZE_KM = 5.0;
-const KM_PER_DEGREE_LAT = 111.32;
+const CELL_OVERLAP_FACTOR = 1.6;
 
-// forecast/src/grid.py::generate_grid() computes ONE longitude step from
-// the bbox's *mid* latitude (SWEDEN_BBOX in config.py) and reuses that same
-// step for every row, rather than re-deriving it per-row -- so every
-// column sits at an identical longitude regardless of latitude. Squares
-// must use that same fixed reference latitude for their width (not each
-// cell's own latitude), or the derived width silently drifts away from the
-// real column spacing the further a row is from the midpoint: narrower
-// than the actual gap south of it (visible gaps between squares, as seen
-// live over Stockholm) and wider than it north of it (overlap).
+// Reference latitude used to size circles (SWEDEN_BBOX mid-latitude, see
+// config.py) -- one fixed value rather than each feature's own latitude,
+// so every circle renders at a consistent size regardless of where it
+// sits in Sweden (using true per-cell latitude would make circles subtly
+// shrink/grow from north to south, which reads as uneven/inconsistent
+// rather than smooth).
 const SWEDEN_BBOX_MID_LAT_DEG = (55.2 + 69.1) / 2;
+const EARTH_CIRCUMFERENCE_M = 40075016.686;
 
-function buildCellSquareRing(lon: number, lat: number, sizeKm: number): number[][] {
-  const halfLatDeg = sizeKm / 2 / KM_PER_DEGREE_LAT;
-  const halfLonDeg = sizeKm / 2 / (KM_PER_DEGREE_LAT * Math.cos((SWEDEN_BBOX_MID_LAT_DEG * Math.PI) / 180));
-  return [
-    [lon - halfLonDeg, lat - halfLatDeg],
-    [lon + halfLonDeg, lat - halfLatDeg],
-    [lon + halfLonDeg, lat + halfLatDeg],
-    [lon - halfLonDeg, lat + halfLatDeg],
-    [lon - halfLonDeg, lat - halfLatDeg],
-  ];
+// Standard Web Mercator ground resolution formula (meters/pixel at a given
+// zoom + latitude), used to convert the real 5km grid spacing into the
+// correct circle-radius *in pixels* at each zoom level -- a fixed pixel
+// radius (what the very first version of this layer used) doesn't scale
+// with zoom, so it either leaves gaps or overlaps far too much depending
+// on how far in/out the map is.
+function metersPerPixelAtZoom(zoom: number, latRad: number): number {
+  return (EARTH_CIRCUMFERENCE_M * Math.cos(latRad)) / (256 * Math.pow(2, zoom));
 }
+
+function circleRadiusPxAtZoom(zoom: number): number {
+  const latRad = (SWEDEN_BBOX_MID_LAT_DEG * Math.PI) / 180;
+  const metersPerPixel = metersPerPixelAtZoom(zoom, latRad);
+  const halfSpacingM = (GRID_CELL_SIZE_KM * 1000) / 2;
+  return (halfSpacingM * CELL_OVERLAP_FACTOR) / metersPerPixel;
+}
+
+const CIRCLE_RADIUS_ZOOM_STOPS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+const CIRCLE_RADIUS_EXPRESSION: maplibregl.ExpressionSpecification = [
+  "interpolate",
+  ["linear"],
+  ["zoom"],
+  ...CIRCLE_RADIUS_ZOOM_STOPS.flatMap((z) => [z, circleRadiusPxAtZoom(z)] as [number, number]),
+];
 
 function buildFeatureCollection(
   cells: CellRecord[],
@@ -77,10 +89,7 @@ function buildFeatureCollection(
     type: "FeatureCollection",
     features: cells.map((cell) => ({
       type: "Feature",
-      geometry: {
-        type: "Polygon",
-        coordinates: [buildCellSquareRing(cell.longitude, cell.latitude, GRID_CELL_SIZE_KM)],
-      },
+      geometry: { type: "Point", coordinates: [cell.longitude, cell.latitude] },
       properties: {
         cell_id: cell.cell_id,
         lat: cell.latitude,
@@ -150,11 +159,13 @@ export function MapView({
       map.addSource("cells", { type: "geojson", data: featureCollection });
       map.addLayer({
         id: "cells-heat",
-        type: "fill",
+        type: "circle",
         source: "cells",
         paint: {
-          "fill-color": layer === "confidence" ? CONFIDENCE_COLOR_EXPRESSION : RISK_COLOR_EXPRESSION,
-          "fill-opacity": ["case", ["<", ["get", "value"], 0], 0.12, 0.85],
+          "circle-radius": CIRCLE_RADIUS_EXPRESSION,
+          "circle-color": layer === "confidence" ? CONFIDENCE_COLOR_EXPRESSION : RISK_COLOR_EXPRESSION,
+          "circle-opacity": ["case", ["<", ["get", "value"], 0], 0.12, 0.9],
+          "circle-blur": 0.65,
         },
       });
 
@@ -208,7 +219,7 @@ export function MapView({
       if (map.getLayer("cells-heat")) {
         map.setPaintProperty(
           "cells-heat",
-          "fill-color",
+          "circle-color",
           layer === "confidence" ? CONFIDENCE_COLOR_EXPRESSION : RISK_COLOR_EXPRESSION
         );
       }
