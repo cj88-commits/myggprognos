@@ -18,76 +18,85 @@ const SWEDEN_INITIAL_ZOOM = 4.2;
 // style (e.g. MapTiler, Stadia Maps) if desired; see README.
 const DEFAULT_STYLE_URL = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
 
-// Smooth 0-100 green -> yellow-green -> yellow -> orange -> red ramp (see
-// lib/riskModel.ts::RISK_COLOR_STOPS, shared with any other continuous risk
-// display), rather than the old 0-10 banded scale.
-const RISK_COLOR_EXPRESSION: maplibregl.ExpressionSpecification = [
+// Both squares (tiled grid -- hard-edged, "Minecraft blocks") and
+// individually-visible blurred circles ("weird", separate blobs) were
+// tried and rejected live: the ask is a genuinely continuous coloured
+// *area*, not any per-cell shape. MapLibre's "heatmap" layer type renders
+// from the same point data as a single blended density surface with no
+// per-feature outline at all, which is the right primitive for that.
+//
+// heatmap-color is keyed on the synthetic ["heatmap-density"] axis (0-1,
+// relative local concentration of nearby weighted points), not the raw
+// "value" property directly -- that's a hard requirement of the paint
+// property, not a stylistic choice.
+const RISK_HEATMAP_COLOR_EXPRESSION: maplibregl.ExpressionSpecification = [
+  "interpolate",
+  ["linear"],
+  ["heatmap-density"],
+  0, "rgba(0,0,0,0)",
+  ...RISK_COLOR_STOPS.flatMap((stop) => [Math.max(stop.value / 100, 0.001), stop.color] as [number, string]),
+];
+
+const CONFIDENCE_HEATMAP_COLOR_EXPRESSION: maplibregl.ExpressionSpecification = [
+  "interpolate",
+  ["linear"],
+  ["heatmap-density"],
+  0, "rgba(0,0,0,0)",
+  0.001, "#d9432e",
+  0.4, "#f2c94c",
+  0.7, "#2e8b4f",
+  1, "#1c4a32",
+];
+
+// heatmap-weight: 0-100 risk -> 0-1 density contribution. -1 (no-data
+// sentinel) contributes nothing (stays transparent, correctly showing
+// "no data" rather than fabricating a value). A real value of 0 still
+// gets a small non-zero floor (0.25, not 0) so a genuinely-covered
+// very-low-risk area reads as pale green, not gaps of transparency --
+// otherwise the (currently nationwide-low-risk) live data would render as
+// almost nothing at all.
+const HEATMAP_WEIGHT_EXPRESSION: maplibregl.ExpressionSpecification = [
   "interpolate",
   ["linear"],
   ["get", "value"],
-  ...RISK_COLOR_STOPS.flatMap((stop) => [stop.value, stop.color] as [number, string]),
+  -1, 0,
+  0, 0.25,
+  100, 1,
 ];
 
-const CONFIDENCE_COLOR_EXPRESSION: maplibregl.ExpressionSpecification = [
-  "interpolate",
-  ["linear"],
-  ["get", "value"],
-  0, "#d9432e",
-  40, "#f2c94c",
-  70, "#2e8b4f",
-  100, "#1c4a32",
-];
-
-// Must match forecast/src/config.py::GRID_RESOLUTION_KM. Rendered as
-// overlapping, blurred circles (not tiled squares -- tried first, but
-// produced a hard-edged "Minecraft blocks" look) sized generously larger
-// than the actual 5km spacing so neighbouring cells blend into a
-// continuous, smooth-looking colour gradient, closer to a typical weather
-// heat map than a literal grid.
-const GRID_CELL_SIZE_KM = 5.0;
-const CELL_OVERLAP_FACTOR = 1.6;
-
-// Reference latitude used to size circles (SWEDEN_BBOX mid-latitude, see
-// config.py) -- one fixed value rather than each feature's own latitude,
-// so every circle renders at a consistent size regardless of where it
-// sits in Sweden (using true per-cell latitude would make circles subtly
-// shrink/grow from north to south, which reads as uneven/inconsistent
-// rather than smooth).
-const SWEDEN_BBOX_MID_LAT_DEG = (55.2 + 69.1) / 2;
-const EARTH_CIRCUMFERENCE_M = 40075016.686;
-
-// Standard Web Mercator ground resolution formula (meters/pixel at a given
-// zoom + latitude), used to convert the real 5km grid spacing into the
-// correct circle-radius *in pixels* at each zoom level -- a fixed pixel
-// radius (what the very first version of this layer used) doesn't scale
-// with zoom, so it either leaves gaps or overlaps far too much depending
-// on how far in/out the map is.
+// Must match forecast/src/config.py::GRID_RESOLUTION_KM -- sized so each
+// point's blend radius comfortably overlaps its neighbours at the grid's
+// real ~5km spacing, using the standard Web Mercator ground-resolution
+// formula to keep that overlap consistent at every zoom level (a fixed
+// pixel radius doesn't scale with zoom, and was the root cause of the very
+// first version of this layer showing gaps between dots).
 //
 // Tile size is 512px, not the classic 256px XYZ raster convention -- that's
 // MapLibre GL's own default for vector styles, confirmed against this map
-// instance via map.project() on two known-adjacent grid points (measured
-// on-screen spacing was exactly 2x what the 256px-based formula predicted,
-// which is why the first version of this rendered visibly separated blobs
-// instead of overlapping into a continuous surface).
+// instance via map.project() on two known-adjacent grid points.
+const GRID_CELL_SIZE_KM = 5.0;
+const CELL_OVERLAP_FACTOR = 2.2;
+const SWEDEN_BBOX_MID_LAT_DEG = (55.2 + 69.1) / 2;
+const EARTH_CIRCUMFERENCE_M = 40075016.686;
 const TILE_SIZE_PX = 512;
 
 function metersPerPixelAtZoom(zoom: number, latRad: number): number {
   return (EARTH_CIRCUMFERENCE_M * Math.cos(latRad)) / (TILE_SIZE_PX * Math.pow(2, zoom));
 }
 
-function circleRadiusPxAtZoom(zoom: number): number {
+function heatmapRadiusPxAtZoom(zoom: number): number {
   const latRad = (SWEDEN_BBOX_MID_LAT_DEG * Math.PI) / 180;
   const metersPerPixel = metersPerPixelAtZoom(zoom, latRad);
   const halfSpacingM = (GRID_CELL_SIZE_KM * 1000) / 2;
   return (halfSpacingM * CELL_OVERLAP_FACTOR) / metersPerPixel;
 }
 
-const CIRCLE_RADIUS_ZOOM_STOPS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
-const CIRCLE_RADIUS_EXPRESSION: maplibregl.ExpressionSpecification = [
+const HEATMAP_RADIUS_ZOOM_STOPS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+const HEATMAP_RADIUS_EXPRESSION: maplibregl.ExpressionSpecification = [
   "interpolate",
   ["linear"],
   ["zoom"],
-  ...CIRCLE_RADIUS_ZOOM_STOPS.flatMap((z) => [z, circleRadiusPxAtZoom(z)] as [number, number]),
+  ...HEATMAP_RADIUS_ZOOM_STOPS.flatMap((z) => [z, heatmapRadiusPxAtZoom(z)] as [number, number]),
 ];
 
 function buildFeatureCollection(
@@ -168,31 +177,24 @@ export function MapView({
       map.addSource("cells", { type: "geojson", data: featureCollection });
       map.addLayer({
         id: "cells-heat",
-        type: "circle",
+        type: "heatmap",
         source: "cells",
         paint: {
-          "circle-radius": CIRCLE_RADIUS_EXPRESSION,
-          "circle-color": layer === "confidence" ? CONFIDENCE_COLOR_EXPRESSION : RISK_COLOR_EXPRESSION,
-          "circle-opacity": ["case", ["<", ["get", "value"], 0], 0.12, 0.9],
-          "circle-blur": 0.65,
+          "heatmap-weight": HEATMAP_WEIGHT_EXPRESSION,
+          "heatmap-intensity": 1,
+          "heatmap-radius": HEATMAP_RADIUS_EXPRESSION,
+          "heatmap-color": layer === "confidence" ? CONFIDENCE_HEATMAP_COLOR_EXPRESSION : RISK_HEATMAP_COLOR_EXPRESSION,
+          "heatmap-opacity": 0.85,
         },
       });
 
-      map.on("click", "cells-heat", (e) => {
-        const feature = e.features?.[0];
-        if (feature) {
-          const { lat, lon } = feature.properties as { lat: number; lon: number };
-          onSelectLocation(lat, lon);
-        }
-      });
-      map.on("click", (e) => {
-        const features = map.queryRenderedFeatures(e.point, { layers: ["cells-heat"] });
-        if (features.length === 0) {
-          onSelectLocation(e.lngLat.lat, e.lngLat.lng);
-        }
-      });
-      map.on("mouseenter", "cells-heat", () => (map.getCanvas().style.cursor = "pointer"));
-      map.on("mouseleave", "cells-heat", () => (map.getCanvas().style.cursor = ""));
+      // A heatmap layer is a single blended density surface, not discrete
+      // per-feature shapes, so there's no individual "cell" to hit-test
+      // against on click -- selecting the exact clicked point and letting
+      // the app's existing nearestCell() lookup resolve the closest real
+      // grid cell (already how every other selection path works) is both
+      // simpler and more correct than trying to query a feature here.
+      map.on("click", (e) => onSelectLocation(e.lngLat.lat, e.lngLat.lng));
 
       readyRef.current = true;
     });
@@ -228,8 +230,8 @@ export function MapView({
       if (map.getLayer("cells-heat")) {
         map.setPaintProperty(
           "cells-heat",
-          "circle-color",
-          layer === "confidence" ? CONFIDENCE_COLOR_EXPRESSION : RISK_COLOR_EXPRESSION
+          "heatmap-color",
+          layer === "confidence" ? CONFIDENCE_HEATMAP_COLOR_EXPRESSION : RISK_HEATMAP_COLOR_EXPRESSION
         );
       }
     };
