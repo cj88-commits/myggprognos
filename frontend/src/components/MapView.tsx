@@ -46,9 +46,20 @@ const CONFIDENCE_COLOR_EXPRESSION: maplibregl.ExpressionSpecification = [
 const GRID_CELL_SIZE_KM = 5.0;
 const KM_PER_DEGREE_LAT = 111.32;
 
+// forecast/src/grid.py::generate_grid() computes ONE longitude step from
+// the bbox's *mid* latitude (SWEDEN_BBOX in config.py) and reuses that same
+// step for every row, rather than re-deriving it per-row -- so every
+// column sits at an identical longitude regardless of latitude. Squares
+// must use that same fixed reference latitude for their width (not each
+// cell's own latitude), or the derived width silently drifts away from the
+// real column spacing the further a row is from the midpoint: narrower
+// than the actual gap south of it (visible gaps between squares, as seen
+// live over Stockholm) and wider than it north of it (overlap).
+const SWEDEN_BBOX_MID_LAT_DEG = (55.2 + 69.1) / 2;
+
 function buildCellSquareRing(lon: number, lat: number, sizeKm: number): number[][] {
   const halfLatDeg = sizeKm / 2 / KM_PER_DEGREE_LAT;
-  const halfLonDeg = sizeKm / 2 / (KM_PER_DEGREE_LAT * Math.cos((lat * Math.PI) / 180));
+  const halfLonDeg = sizeKm / 2 / (KM_PER_DEGREE_LAT * Math.cos((SWEDEN_BBOX_MID_LAT_DEG * Math.PI) / 180));
   return [
     [lon - halfLonDeg, lat - halfLatDeg],
     [lon + halfLonDeg, lat - halfLatDeg],
