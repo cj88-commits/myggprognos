@@ -153,19 +153,37 @@ export function MapView({
   }, []);
 
   // Update layer data + colour expression when cells/values/layer change.
+  //
+  // The real cells/daily/hourly data and the map style (CARTO style.json +
+  // sprite + glyphs + vector tiles) load in parallel with no guaranteed
+  // order. If this effect runs *before* the map's "load" event -- e.g. the
+  // style takes longer than the data fetch, which is common at full-Sweden
+  // scale (~18k features) -- it used to bail out via the `!readyRef.current`
+  // guard and never retry, permanently leaving the source's initial empty
+  // FeatureCollection (captured at mount, before data existed) on screen:
+  // the map would render with zero visible risk circles even though every
+  // fetch had actually succeeded. Deferring the same update via `map.once`
+  // when not yet ready guarantees it's applied exactly once "load" fires.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !readyRef.current) return;
-    const source = map.getSource("cells") as GeoJSONSource | undefined;
-    if (source) {
-      source.setData(featureCollection);
-    }
-    if (map.getLayer("cells-heat")) {
-      map.setPaintProperty(
-        "cells-heat",
-        "circle-color",
-        layer === "confidence" ? CONFIDENCE_COLOR_EXPRESSION : RISK_COLOR_EXPRESSION
-      );
+    if (!map) return;
+    const applyUpdate = () => {
+      const source = map.getSource("cells") as GeoJSONSource | undefined;
+      if (source) {
+        source.setData(featureCollection);
+      }
+      if (map.getLayer("cells-heat")) {
+        map.setPaintProperty(
+          "cells-heat",
+          "circle-color",
+          layer === "confidence" ? CONFIDENCE_COLOR_EXPRESSION : RISK_COLOR_EXPRESSION
+        );
+      }
+    };
+    if (readyRef.current) {
+      applyUpdate();
+    } else {
+      map.once("load", applyUpdate);
     }
   }, [featureCollection, layer]);
 
