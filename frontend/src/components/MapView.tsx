@@ -188,7 +188,7 @@ export function MapView({
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     mapRef.current = map;
 
-    map.on("load", () => {
+    map.on("load", async () => {
       map.addSource("cells", { type: "geojson", data: featureCollection });
       // Fall back to adding on top if the style doesn't have this layer
       // (e.g. a custom VITE_MAP_STYLE_URL override) rather than throwing.
@@ -208,6 +208,39 @@ export function MapView({
         },
         beforeId
       );
+
+      // Mask lakes back out from underneath the heatmap. The basemap's own
+      // "water" layer already does this for the sea, but its vector tiles
+      // generalise away smaller lakes at lower zoom levels (that's *why*
+      // lakes were still showing coloured after the first attempt at this
+      // -- relying solely on the basemap's zoom-dependent tiles isn't
+      // reliable). This is a small, static, curated set of Sweden's actual
+      // lakes (Natural Earth 10m Lakes, see data/static/sweden_lakes.geojson
+      // and scripts that built it) that doesn't change per forecast run,
+      // so it's fetched once here rather than routed through the
+      // generated-data pipeline.
+      try {
+        const lakesRes = await fetch("data/static/sweden_lakes.geojson");
+        if (lakesRes.ok) {
+          const lakesGeoJson = await lakesRes.json();
+          map.addSource("lakes", { type: "geojson", data: lakesGeoJson });
+          map.addLayer(
+            {
+              id: "lakes-mask",
+              type: "fill",
+              source: "lakes",
+              // Matches CARTO Positron's own "water" fill-color exactly, so
+              // a lake reads identically whether it's masked by us or by
+              // the basemap.
+              paint: { "fill-color": "#d4dadc", "fill-opacity": 1 },
+            },
+            beforeId
+          );
+        }
+      } catch {
+        // Non-fatal: worst case, lake masking falls back to whatever the
+        // basemap's own water tiles provide at the current zoom.
+      }
 
       // A heatmap layer is a single blended density surface, not discrete
       // per-feature shapes, so there's no individual "cell" to hit-test

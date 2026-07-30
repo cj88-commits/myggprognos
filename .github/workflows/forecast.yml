@@ -47,7 +47,12 @@ jobs:
           path: |
             data/static/grid.json
             data/static/cell_features.json
-          key: static-grid-v1-${{ hashFiles('forecast/src/config.py') }}
+          # v1 only hashed config.py, so a boundary-only change (e.g.
+          # replacing data/static/sweden_boundary.geojson with a
+          # higher-resolution one) silently kept serving the stale cached
+          # grid -- bumped to v2 and widened to cover every input that
+          # actually affects grid/feature generation.
+          key: static-grid-v2-${{ hashFiles('forecast/src/config.py', 'forecast/src/grid.py', 'forecast/src/static_features.py', 'scripts/prepare_grid.py', 'scripts/prepare_static_features.py', 'data/static/sweden_boundary.geojson') }}
 
       - name: Prepare grid (cache miss only)
         if: steps.static-cache.outputs.cache-hit != 'true'
