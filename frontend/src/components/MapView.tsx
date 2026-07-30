@@ -38,6 +38,26 @@ const CONFIDENCE_COLOR_EXPRESSION: maplibregl.ExpressionSpecification = [
   100, "#1c4a32",
 ];
 
+// Must match forecast/src/config.py::GRID_RESOLUTION_KM -- each cell is
+// rendered as a square this wide/tall (in km) rather than a fixed-pixel
+// circle marker, so adjacent cells tile edge-to-edge with no gaps and the
+// grid reads as a continuous coloured surface (a real choropleth) instead
+// of a sparse scatter of dots with basemap showing through between them.
+const GRID_CELL_SIZE_KM = 5.0;
+const KM_PER_DEGREE_LAT = 111.32;
+
+function buildCellSquareRing(lon: number, lat: number, sizeKm: number): number[][] {
+  const halfLatDeg = sizeKm / 2 / KM_PER_DEGREE_LAT;
+  const halfLonDeg = sizeKm / 2 / (KM_PER_DEGREE_LAT * Math.cos((lat * Math.PI) / 180));
+  return [
+    [lon - halfLonDeg, lat - halfLatDeg],
+    [lon + halfLonDeg, lat - halfLatDeg],
+    [lon + halfLonDeg, lat + halfLatDeg],
+    [lon - halfLonDeg, lat + halfLatDeg],
+    [lon - halfLonDeg, lat - halfLatDeg],
+  ];
+}
+
 function buildFeatureCollection(
   cells: CellRecord[],
   valuesByCellId: Record<string, number> | null
@@ -46,9 +66,14 @@ function buildFeatureCollection(
     type: "FeatureCollection",
     features: cells.map((cell) => ({
       type: "Feature",
-      geometry: { type: "Point", coordinates: [cell.longitude, cell.latitude] },
+      geometry: {
+        type: "Polygon",
+        coordinates: [buildCellSquareRing(cell.longitude, cell.latitude, GRID_CELL_SIZE_KM)],
+      },
       properties: {
         cell_id: cell.cell_id,
+        lat: cell.latitude,
+        lon: cell.longitude,
         // -1 is a "no data" sentinel (kept numeric so it works inside
         // interpolate/case expressions, which don't type-check against
         // null literals).
@@ -114,21 +139,18 @@ export function MapView({
       map.addSource("cells", { type: "geojson", data: featureCollection });
       map.addLayer({
         id: "cells-heat",
-        type: "circle",
+        type: "fill",
         source: "cells",
         paint: {
-          "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 4, 8, 10, 12, 18],
-          "circle-color": layer === "confidence" ? CONFIDENCE_COLOR_EXPRESSION : RISK_COLOR_EXPRESSION,
-          "circle-opacity": ["case", ["<", ["get", "value"], 0], 0.12, 0.85],
-          "circle-stroke-width": 0.5,
-          "circle-stroke-color": "rgba(0,0,0,0.25)",
+          "fill-color": layer === "confidence" ? CONFIDENCE_COLOR_EXPRESSION : RISK_COLOR_EXPRESSION,
+          "fill-opacity": ["case", ["<", ["get", "value"], 0], 0.12, 0.85],
         },
       });
 
       map.on("click", "cells-heat", (e) => {
         const feature = e.features?.[0];
-        if (feature && feature.geometry.type === "Point") {
-          const [lon, lat] = feature.geometry.coordinates as [number, number];
+        if (feature) {
+          const { lat, lon } = feature.properties as { lat: number; lon: number };
           onSelectLocation(lat, lon);
         }
       });
@@ -175,7 +197,7 @@ export function MapView({
       if (map.getLayer("cells-heat")) {
         map.setPaintProperty(
           "cells-heat",
-          "circle-color",
+          "fill-color",
           layer === "confidence" ? CONFIDENCE_COLOR_EXPRESSION : RISK_COLOR_EXPRESSION
         );
       }
