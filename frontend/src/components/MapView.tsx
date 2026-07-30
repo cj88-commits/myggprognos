@@ -75,7 +75,22 @@ const HEATMAP_WEIGHT_EXPRESSION: maplibregl.ExpressionSpecification = [
 // MapLibre GL's own default for vector styles, confirmed against this map
 // instance via map.project() on two known-adjacent grid points.
 const GRID_CELL_SIZE_KM = 5.0;
-const CELL_OVERLAP_FACTOR = 2.2;
+// Generous on purpose: color is meant to reach past the true coastline now
+// that it renders underneath the basemap's own water layer (see
+// WATER_LAYER_ID below), which clips away anything that spills onto the
+// sea/lakes -- so there's no more downside to erring on the side of "too
+// much blur", only upside (closes the white gaps that used to show at the
+// coast when the grid's outermost cells sat a few km inland of it).
+const CELL_OVERLAP_FACTOR = 3.4;
+
+// CARTO Positron's water fill covers sea AND lakes as a single unified
+// "water" source-layer (standard OpenMapTiles schema -- there's no
+// separate ID per lake). Inserting our heatmap layer immediately before
+// it means the basemap draws water on top of our colour wherever there
+// actually is water, without us needing our own lake/coastline geometry
+// at all. "water_shadow" is a subtle bevel drawn just before "water"
+// itself, so using it as the insertion point puts us below both.
+const WATER_LAYER_ID = "water_shadow";
 const SWEDEN_BBOX_MID_LAT_DEG = (55.2 + 69.1) / 2;
 const EARTH_CIRCUMFERENCE_M = 40075016.686;
 const TILE_SIZE_PX = 512;
@@ -175,18 +190,24 @@ export function MapView({
 
     map.on("load", () => {
       map.addSource("cells", { type: "geojson", data: featureCollection });
-      map.addLayer({
-        id: "cells-heat",
-        type: "heatmap",
-        source: "cells",
-        paint: {
-          "heatmap-weight": HEATMAP_WEIGHT_EXPRESSION,
-          "heatmap-intensity": 1,
-          "heatmap-radius": HEATMAP_RADIUS_EXPRESSION,
-          "heatmap-color": layer === "confidence" ? CONFIDENCE_HEATMAP_COLOR_EXPRESSION : RISK_HEATMAP_COLOR_EXPRESSION,
-          "heatmap-opacity": 0.85,
+      // Fall back to adding on top if the style doesn't have this layer
+      // (e.g. a custom VITE_MAP_STYLE_URL override) rather than throwing.
+      const beforeId = map.getLayer(WATER_LAYER_ID) ? WATER_LAYER_ID : undefined;
+      map.addLayer(
+        {
+          id: "cells-heat",
+          type: "heatmap",
+          source: "cells",
+          paint: {
+            "heatmap-weight": HEATMAP_WEIGHT_EXPRESSION,
+            "heatmap-intensity": 1,
+            "heatmap-radius": HEATMAP_RADIUS_EXPRESSION,
+            "heatmap-color": layer === "confidence" ? CONFIDENCE_HEATMAP_COLOR_EXPRESSION : RISK_HEATMAP_COLOR_EXPRESSION,
+            "heatmap-opacity": 0.85,
+          },
         },
-      });
+        beforeId
+      );
 
       // A heatmap layer is a single blended density surface, not discrete
       // per-feature shapes, so there's no individual "cell" to hit-test
