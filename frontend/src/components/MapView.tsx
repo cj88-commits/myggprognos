@@ -62,8 +62,17 @@ const EARTH_CIRCUMFERENCE_M = 40075016.686;
 // radius (what the very first version of this layer used) doesn't scale
 // with zoom, so it either leaves gaps or overlaps far too much depending
 // on how far in/out the map is.
+//
+// Tile size is 512px, not the classic 256px XYZ raster convention -- that's
+// MapLibre GL's own default for vector styles, confirmed against this map
+// instance via map.project() on two known-adjacent grid points (measured
+// on-screen spacing was exactly 2x what the 256px-based formula predicted,
+// which is why the first version of this rendered visibly separated blobs
+// instead of overlapping into a continuous surface).
+const TILE_SIZE_PX = 512;
+
 function metersPerPixelAtZoom(zoom: number, latRad: number): number {
-  return (EARTH_CIRCUMFERENCE_M * Math.cos(latRad)) / (256 * Math.pow(2, zoom));
+  return (EARTH_CIRCUMFERENCE_M * Math.cos(latRad)) / (TILE_SIZE_PX * Math.pow(2, zoom));
 }
 
 function circleRadiusPxAtZoom(zoom: number): number {
