@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 import pytest
 from config import ModelConfig, load_model_config
 from grid import GridCell
@@ -37,8 +35,12 @@ def sample_static() -> StaticFeatures:
 
 @pytest.fixture
 def synthetic_weather(sample_cell) -> HourlyWeather:
-    provider = SyntheticWeatherProvider()
-    start = datetime(2026, 7, 15, tzinfo=timezone.utc).date()
-    end = datetime(2026, 7, 22, tzinfo=timezone.utc).date()
-    result = provider.fetch_forecast([sample_cell], start, end)
+    from datetime import datetime, timezone
+
+    # Pinned reference date (not real wall-clock time) so tests asserting
+    # specific feature/score values stay reproducible regardless of when
+    # they're run -- matches the 2026-07-15..07-22 span the fixture always
+    # produced before switching to fetch_combined's past/forecast-day API.
+    provider = SyntheticWeatherProvider(today=datetime(2026, 7, 15, tzinfo=timezone.utc))
+    result = provider.fetch_combined([sample_cell], past_days=0, forecast_days=8)
     return result[sample_cell.cell_id]

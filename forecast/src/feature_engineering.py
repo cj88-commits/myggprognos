@@ -156,8 +156,9 @@ def _daypart(hour: int) -> str:
 def precompute_rolling_windows(weather: HourlyWeather, development_base_temperature_c: float = 10.0) -> RollingWindows:
     """One-time (per cell) parse + cumulative-sum precompute. Assumes
     `weather.times` is sorted ascending and (approximately) uniformly hourly,
-    which holds for both OpenMeteoProvider and SyntheticWeatherProvider and
-    for pipeline.merge_weather's sorted, de-duplicated merge."""
+    which holds for both OpenMeteoProvider and SyntheticWeatherProvider
+    (weather.py::fetch_combined returns a single continuous series from
+    Open-Meteo directly, already sorted with no duplicates)."""
     parsed_times = _parse_times(weather.times)
 
     temp = np.array([v if v is not None else np.nan for v in weather.temperature_2m], dtype=float)

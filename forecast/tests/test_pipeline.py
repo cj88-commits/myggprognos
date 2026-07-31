@@ -4,8 +4,7 @@ import gzip
 import json
 from datetime import datetime, timezone
 
-from pipeline import merge_weather, run_pipeline
-from weather import SyntheticWeatherProvider
+from pipeline import run_pipeline
 
 
 def test_run_pipeline_sample_mode_produces_expected_assets(tmp_path):
@@ -63,17 +62,3 @@ def test_run_pipeline_does_not_rewrite_unchanged_files(tmp_path):
     manifest_mtime_2 = (tmp_path / "cells.json.gz").stat().st_mtime_ns
 
     assert manifest_mtime_1 == manifest_mtime_2
-
-
-def test_merge_weather_prefers_forecast_on_overlap():
-    provider = SyntheticWeatherProvider()
-    from grid import GridCell
-
-    cell = GridCell(cell_id="X", latitude=59.0, longitude=18.0)
-    history = provider.fetch_recent_history([cell], days_back=3)[cell.cell_id]
-    forecast = provider.fetch_forecast([cell], datetime(2026, 7, 29).date(), datetime(2026, 7, 29).date())[cell.cell_id]
-
-    merged = merge_weather(history, forecast)
-
-    assert merged.times == sorted(set(merged.times))
-    assert len(merged.temperature_2m) == len(merged.times)

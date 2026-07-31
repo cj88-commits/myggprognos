@@ -35,11 +35,11 @@ FORECAST_DAYS = 7
 HOURLY_HORIZON_HOURS = 48
 FORECAST_UPDATE_INTERVAL_HOURS = 6
 
+# A single endpoint serves both recent history and forward forecast (see
+# weather.py::OpenMeteoProvider.fetch_combined, using the "past_days"
+# parameter) -- there's no separate archive-API endpoint/env var anymore.
 OPEN_METEO_BASE_URL = os.environ.get(
     "OPEN_METEO_BASE_URL", "https://api.open-meteo.com/v1/forecast"
-)
-OPEN_METEO_ARCHIVE_URL = os.environ.get(
-    "OPEN_METEO_ARCHIVE_URL", "https://archive-api.open-meteo.com/v1/archive"
 )
 
 # Open-Meteo allows many coordinates per request; keep batches well under

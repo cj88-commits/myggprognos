@@ -21,6 +21,7 @@ from pathlib import Path
 
 from config import (
     DAYPARTS,
+    FORECAST_DAYS,
     GENERATED_DATA_DIR,
     HOURLY_HORIZON_HOURS,
     SAMPLE_DATA_DIR,
@@ -50,55 +51,12 @@ from static_features import (
     load_static_features,
     save_static_features,
 )
-from weather import HourlyWeather, OpenMeteoProvider, SyntheticWeatherProvider, WeatherProvider
+from weather import OpenMeteoProvider, SyntheticWeatherProvider, WeatherProvider
 
 logger = logging.getLogger("mosquito_forecast.pipeline")
 
 DAYPART_REPRESENTATIVE_HOUR = {"morning": 8, "afternoon": 14, "evening": 20, "night": 23}
 HISTORY_DAYS_BACK = 21
-
-
-def merge_weather(history: HourlyWeather, forecast: HourlyWeather) -> HourlyWeather:
-    """Concatenate history + forecast series into one continuous timeline,
-    preferring forecast values on overlapping timestamps.
-
-    Uses a one-time {time: index} lookup per source rather than repeated
-    `list.index()` scans (the latter turns this into an O(n^2) operation
-    per cell, which dominates the whole pipeline's runtime at full-Sweden
-    scale -- ~18k cells x hundreds of hourly timestamps)."""
-    fields = [
-        "temperature_2m", "relative_humidity_2m", "precipitation",
-        "wind_speed_10m", "wind_gusts_10m", "cloud_cover", "soil_moisture",
-    ]
-
-    history_index = {t: i for i, t in enumerate(history.times)}
-    forecast_index = {t: i for i, t in enumerate(forecast.times)}
-    sorted_times = sorted(set(history.times) | set(forecast.times))
-
-    merged_series: dict[str, list] = {f: [] for f in fields}
-    for t in sorted_times:
-        f_idx = forecast_index.get(t)
-        h_idx = history_index.get(t)
-        for f in fields:
-            value = getattr(forecast, f)[f_idx] if f_idx is not None else None
-            if value is None and h_idx is not None:
-                value = getattr(history, f)[h_idx]
-            merged_series[f].append(value)
-
-    return HourlyWeather(
-        cell_id=history.cell_id,
-        latitude=history.latitude,
-        longitude=history.longitude,
-        times=sorted_times,
-        temperature_2m=merged_series["temperature_2m"],
-        relative_humidity_2m=merged_series["relative_humidity_2m"],
-        precipitation=merged_series["precipitation"],
-        wind_speed_10m=merged_series["wind_speed_10m"],
-        wind_gusts_10m=merged_series["wind_gusts_10m"],
-        cloud_cover=merged_series["cloud_cover"],
-        soil_moisture=merged_series["soil_moisture"],
-        used_fallback=history.used_fallback or forecast.used_fallback,
-    )
 
 
 def _record_from_score(cell_id: str, features, score, confidence_result) -> dict:
@@ -151,27 +109,25 @@ def run_pipeline(
         static_map = {c.cell_id: generate_placeholder_static_features(c) for c in cells}
         save_static_features(list(static_map.values()), static_path)
 
-    provider = weather_provider or (SyntheticWeatherProvider() if sample else OpenMeteoProvider())
+    # SyntheticWeatherProvider anchors its seasonal-mean calculation to
+    # `run_time` (not real wall-clock time) so sample-mode/test runs stay
+    # reproducible regardless of the actual date they're executed on. The
+    # real provider needs no such anchor -- Open-Meteo's past_days /
+    # forecast_days are inherently relative to whenever the request is
+    # actually made, which is what we want in production anyway.
+    provider = weather_provider or (SyntheticWeatherProvider(today=run_time) if sample else OpenMeteoProvider())
 
     today = run_time.date()
     forecast_end = today + timedelta(days=6)
 
-    history_by_cell = provider.fetch_recent_history(cells, HISTORY_DAYS_BACK)
-    forecast_by_cell = provider.fetch_forecast(cells, today, forecast_end)
-
-    weather_by_cell: dict[str, HourlyWeather] = {}
+    # One combined fetch (see weather.py::fetch_combined) instead of a
+    # separate history + forecast call -- halves total request volume,
+    # and Open-Meteo already returns a single sorted, non-overlapping
+    # series, so no client-side merge is needed either.
+    weather_by_cell = provider.fetch_combined(cells, HISTORY_DAYS_BACK, FORECAST_DAYS)
     for cell in cells:
-        hist = history_by_cell.get(cell.cell_id)
-        fcst = forecast_by_cell.get(cell.cell_id)
-        if hist is None and fcst is None:
+        if cell.cell_id not in weather_by_cell:
             logger.error("No weather data available for cell %s; skipping", cell.cell_id)
-            continue
-        if hist is None:
-            weather_by_cell[cell.cell_id] = fcst
-        elif fcst is None:
-            weather_by_cell[cell.cell_id] = hist
-        else:
-            weather_by_cell[cell.cell_id] = merge_weather(hist, fcst)
 
     hour_start = run_time.replace(minute=0, second=0, microsecond=0)
 

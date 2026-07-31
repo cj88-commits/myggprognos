@@ -13,14 +13,13 @@ import json
 import logging
 import time
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable, Protocol
 
 import httpx
 
 from config import (
-    OPEN_METEO_ARCHIVE_URL,
     OPEN_METEO_BASE_URL,
     WEATHER_BACKOFF_BASE_S,
     WEATHER_BATCH_SIZE,
@@ -69,18 +68,17 @@ class HourlyWeather:
 
 
 class WeatherProvider(Protocol):
-    def fetch_forecast(
-        self, points: Iterable[GridCell], start_date: date, end_date: date
+    def fetch_combined(
+        self, points: Iterable[GridCell], past_days: int, forecast_days: int
     ) -> dict[str, HourlyWeather]:
-        """Fetch hourly forecast weather for the given points and date
-        range, keyed by cell_id."""
-        ...
-
-    def fetch_recent_history(
-        self, points: Iterable[GridCell], days_back: int
-    ) -> dict[str, HourlyWeather]:
-        """Fetch recent historical/observed weather, used for lagged
-        rainfall and accumulated-warmth features."""
+        """Fetch one continuous hourly series per point spanning `past_days`
+        days before today through `forecast_days` days ahead (inclusive),
+        keyed by cell_id. The recent-past portion feeds lagged rainfall /
+        accumulated-warmth features; the forward portion is the actual
+        forecast. A single call per batch rather than two (one to an
+        archive endpoint for history, one to the forecast endpoint) --
+        Open-Meteo's forecast endpoint natively supports returning both via
+        its `past_days` parameter, which halves total request volume."""
         ...
 
 
@@ -157,7 +155,6 @@ class OpenMeteoProvider:
     def __init__(
         self,
         base_url: str = OPEN_METEO_BASE_URL,
-        archive_url: str = OPEN_METEO_ARCHIVE_URL,
         batch_size: int = WEATHER_BATCH_SIZE,
         timeout_s: float = WEATHER_REQUEST_TIMEOUT_S,
         max_retries: int = WEATHER_MAX_RETRIES,
@@ -168,7 +165,6 @@ class OpenMeteoProvider:
         client: httpx.Client | None = None,
     ):
         self.base_url = base_url
-        self.archive_url = archive_url
         self.batch_size = batch_size
         self.timeout_s = timeout_s
         self.max_retries = max_retries
@@ -262,9 +258,14 @@ class OpenMeteoProvider:
             )
         return results
 
-    def fetch_forecast(
-        self, points: Iterable[GridCell], start_date: date, end_date: date
+    def fetch_combined(
+        self, points: Iterable[GridCell], past_days: int, forecast_days: int
     ) -> dict[str, HourlyWeather]:
+        """One request per batch instead of two: Open-Meteo's forecast
+        endpoint natively returns `past_days` days of recent history
+        immediately followed by `forecast_days` of forward forecast, as a
+        single continuous, sorted, non-overlapping hourly series -- no
+        separate archive-API call or client-side merge/de-dup needed."""
         points = list(points)
         results: dict[str, HourlyWeather] = {}
         for batch in self._batched(points):
@@ -272,14 +273,14 @@ class OpenMeteoProvider:
                 "latitude": ",".join(str(p.latitude) for p in batch),
                 "longitude": ",".join(str(p.longitude) for p in batch),
                 "hourly": ",".join(HOURLY_VARIABLES),
-                "start_date": start_date.isoformat(),
-                "end_date": end_date.isoformat(),
+                "past_days": past_days,
+                "forecast_days": forecast_days,
                 "timezone": "UTC",
             }
             try:
                 payload = self._request_with_retry(self.base_url, params)
             except WeatherValidationError:
-                logger.error("Forecast fetch failed for batch of %d points; skipping batch", len(batch))
+                logger.error("Weather fetch failed for batch of %d points; skipping batch", len(batch))
                 continue
             payload_list = payload if isinstance(payload, list) else [payload]
             if len(payload_list) != len(batch):
@@ -292,41 +293,19 @@ class OpenMeteoProvider:
             results.update(self._parse_batch(batch, payload_list))
         return results
 
-    def fetch_recent_history(self, points: Iterable[GridCell], days_back: int) -> dict[str, HourlyWeather]:
-        points = list(points)
-        end = datetime.now(timezone.utc).date() - timedelta(days=1)
-        start = end - timedelta(days=days_back)
-        results: dict[str, HourlyWeather] = {}
-        for batch in self._batched(points):
-            params = {
-                "latitude": ",".join(str(p.latitude) for p in batch),
-                "longitude": ",".join(str(p.longitude) for p in batch),
-                "hourly": ",".join(HOURLY_VARIABLES),
-                "start_date": start.isoformat(),
-                "end_date": end.isoformat(),
-                "timezone": "UTC",
-            }
-            try:
-                payload = self._request_with_retry(self.archive_url, params)
-            except WeatherValidationError:
-                logger.error("History fetch failed for batch of %d points; skipping batch", len(batch))
-                continue
-            payload_list = payload if isinstance(payload, list) else [payload]
-            if len(payload_list) != len(batch):
-                logger.error(
-                    "Open-Meteo archive returned %d results for %d requested points; skipping mismatched batch",
-                    len(payload_list),
-                    len(batch),
-                )
-                continue
-            results.update(self._parse_batch(batch, payload_list))
-        return results
-
 
 class SyntheticWeatherProvider:
     """Deterministic synthetic WeatherProvider for sample mode, offline
     development, and tests. Produces plausible seasonal hourly series
     without any network access."""
+
+    def __init__(self, today: datetime | None = None):
+        # Optional fixed reference point for "today" -- real sample-mode
+        # runs want actual wall-clock time, but tests asserting scores are
+        # stable/reproducible (see test_fixtures.py) need it pinned so the
+        # seasonal-mean calculation below doesn't shift with whatever date
+        # the test happens to run on.
+        self._today = today
 
     def _series_for(self, cell: GridCell, start: datetime, hours: int) -> HourlyWeather:
         import math as _math
@@ -374,11 +353,11 @@ class SyntheticWeatherProvider:
             used_fallback=True,
         )
 
-    def fetch_forecast(self, points: Iterable[GridCell], start_date: date, end_date: date) -> dict[str, HourlyWeather]:
-        hours = (end_date - start_date).days * 24 + 24
-        start = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
+    def fetch_combined(
+        self, points: Iterable[GridCell], past_days: int, forecast_days: int
+    ) -> dict[str, HourlyWeather]:
+        today = self._today or datetime.now(timezone.utc)
+        today_midnight = today.replace(hour=0, minute=0, second=0, microsecond=0)
+        start = today_midnight - timedelta(days=past_days)
+        hours = (past_days + forecast_days) * 24
         return {cell.cell_id: self._series_for(cell, start, hours) for cell in points}
-
-    def fetch_recent_history(self, points: Iterable[GridCell], days_back: int) -> dict[str, HourlyWeather]:
-        start = datetime.now(timezone.utc) - timedelta(days=days_back)
-        return {cell.cell_id: self._series_for(cell, start, days_back * 24) for cell in points}

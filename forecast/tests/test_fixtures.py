@@ -23,10 +23,8 @@ TARGET_TIME = datetime(2026, 7, 15, 20, tzinfo=timezone.utc)
 
 def _score_for_all_sample_cells(model_config):
     cells = {c.cell_id: c for c in generate_sample_grid()}
-    provider = SyntheticWeatherProvider()
-    weather_by_cell = provider.fetch_forecast(
-        list(cells.values()), datetime(2026, 6, 25).date(), datetime(2026, 7, 16).date()
-    )
+    provider = SyntheticWeatherProvider(today=datetime(2026, 7, 16, tzinfo=timezone.utc))
+    weather_by_cell = provider.fetch_combined(list(cells.values()), past_days=21, forecast_days=7)
 
     scores = {}
     for cell_id, cell in cells.items():

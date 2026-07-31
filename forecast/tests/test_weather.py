@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import date
-
 import httpx
 import pytest
 from grid import GridCell
@@ -51,52 +49,52 @@ def _provider_with_transport(transport: _MockTransport, tmp_path, **overrides) -
     return OpenMeteoProvider(**kwargs)
 
 
-def test_fetch_forecast_parses_valid_response(tmp_path):
+def test_fetch_combined_parses_valid_response(tmp_path):
     cells = [GridCell(cell_id="A", latitude=59.3, longitude=18.0), GridCell(cell_id="B", latitude=57.7, longitude=11.9)]
     transport = _MockTransport([(200, _valid_payload_for(cells))])
     provider = _provider_with_transport(transport, tmp_path)
 
-    result = provider.fetch_forecast(cells, date(2026, 7, 20), date(2026, 7, 20))
+    result = provider.fetch_combined(cells, past_days=21, forecast_days=7)
 
     assert set(result) == {"A", "B"}
     assert result["A"].temperature_2m == [15.0, 15.5]
     assert result["A"].soil_moisture == [0.2, 0.21]
 
 
-def test_fetch_forecast_retries_on_transient_failure_then_succeeds(tmp_path):
+def test_fetch_combined_retries_on_transient_failure_then_succeeds(tmp_path):
     cells = [GridCell(cell_id="A", latitude=59.3, longitude=18.0)]
     transport = _MockTransport([(500, {"error": True, "reason": "server error"}), (200, _valid_payload_for(cells))])
     provider = _provider_with_transport(transport, tmp_path)
 
-    result = provider.fetch_forecast(cells, date(2026, 7, 20), date(2026, 7, 20))
+    result = provider.fetch_combined(cells, past_days=21, forecast_days=7)
 
     assert "A" in result
     assert transport.calls == 2
 
 
-def test_fetch_forecast_retries_longer_on_rate_limit_then_succeeds(tmp_path):
+def test_fetch_combined_retries_longer_on_rate_limit_then_succeeds(tmp_path):
     # Regression test: production full-Sweden runs were getting HTTP 429
-    # (rate limited) from Open-Meteo's archive API on nearly every batch,
-    # and the generic short exponential backoff (1s/2s/4s...) never gave
-    # the quota window time to reset, so every batch kept failing for the
-    # entire run. A 429 must take the longer, rate-limit-specific backoff
-    # path rather than the generic one.
+    # (rate limited) from Open-Meteo on nearly every batch, and the generic
+    # short exponential backoff (1s/2s/4s...) never gave the quota window
+    # time to reset, so every batch kept failing for the entire run. A 429
+    # must take the longer, rate-limit-specific backoff path rather than
+    # the generic one.
     cells = [GridCell(cell_id="A", latitude=59.3, longitude=18.0)]
     transport = _MockTransport([(429, {"error": True, "reason": "rate limited"}), (200, _valid_payload_for(cells))])
     provider = _provider_with_transport(transport, tmp_path)
 
-    result = provider.fetch_forecast(cells, date(2026, 7, 20), date(2026, 7, 20))
+    result = provider.fetch_combined(cells, past_days=21, forecast_days=7)
 
     assert "A" in result
     assert transport.calls == 2
 
 
-def test_fetch_forecast_gives_up_after_max_retries_and_skips_batch(tmp_path):
+def test_fetch_combined_gives_up_after_max_retries_and_skips_batch(tmp_path):
     cells = [GridCell(cell_id="A", latitude=59.3, longitude=18.0)]
     transport = _MockTransport([(500, {"error": True, "reason": "down"})] * 10)
     provider = _provider_with_transport(transport, tmp_path)
 
-    result = provider.fetch_forecast(cells, date(2026, 7, 20), date(2026, 7, 20))
+    result = provider.fetch_combined(cells, past_days=21, forecast_days=7)
 
     assert result == {}
 
@@ -115,7 +113,7 @@ def test_implausible_values_are_dropped_not_trusted(tmp_path):
     transport = _MockTransport([(200, payload)])
     provider = _provider_with_transport(transport, tmp_path)
 
-    result = provider.fetch_forecast(cells, date(2026, 7, 20), date(2026, 7, 20))
+    result = provider.fetch_combined(cells, past_days=21, forecast_days=7)
 
     assert result["A"].temperature_2m[0] is None
     assert result["A"].temperature_2m[1] == 15.5
@@ -126,7 +124,7 @@ def test_disk_cache_avoids_second_request(tmp_path):
     transport = _MockTransport([(200, _valid_payload_for(cells))])
     provider = _provider_with_transport(transport, tmp_path)
 
-    provider.fetch_forecast(cells, date(2026, 7, 20), date(2026, 7, 20))
-    provider.fetch_forecast(cells, date(2026, 7, 20), date(2026, 7, 20))
+    provider.fetch_combined(cells, past_days=21, forecast_days=7)
+    provider.fetch_combined(cells, past_days=21, forecast_days=7)
 
     assert transport.calls == 1
