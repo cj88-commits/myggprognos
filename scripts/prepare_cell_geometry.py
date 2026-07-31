@@ -73,27 +73,45 @@ def main() -> None:
 
     features = []
     dropped = 0
+    widened = 0
+    # If the nominal ~5km square has no measurable land overlap (thin
+    # coastal slivers, or a cell whose center barely qualifies as "on
+    # land" per the original point-in-polygon test but whose square edges
+    # fall just outside it), progressively widen the search area rather
+    # than dropping the cell outright -- every cell that made it into the
+    # grid in the first place has a real, confirmed-on-land point, so it
+    # should always be paintable with *some* shape.
+    WIDEN_FACTORS = (1, 1.5, 2, 3)
     for cell in cells:
-        square = cell_square(cell.longitude, cell.latitude, GRID_RESOLUTION_KM)
-        nearby_land_idx = land_tree.query(square)
-        if len(nearby_land_idx) == 0:
-            dropped += 1
-            continue
-        nearby_land = unary_union([land_parts[i] for i in nearby_land_idx])
-        paintable = square.intersection(nearby_land)
-        if lake_tree is not None:
-            nearby_lake_idx = lake_tree.query(square)
-            if len(nearby_lake_idx) > 0:
-                nearby_lakes = unary_union([lake_parts[i] for i in nearby_lake_idx])
-                paintable = paintable.difference(nearby_lakes)
-        if paintable.is_empty:
+        paintable = None
+        for factor in WIDEN_FACTORS:
+            square = cell_square(cell.longitude, cell.latitude, GRID_RESOLUTION_KM * factor)
+            nearby_land_idx = land_tree.query(square)
+            if len(nearby_land_idx) == 0:
+                continue
+            nearby_land = unary_union([land_parts[i] for i in nearby_land_idx])
+            candidate = square.intersection(nearby_land)
+            if lake_tree is not None:
+                nearby_lake_idx = lake_tree.query(square)
+                if len(nearby_lake_idx) > 0:
+                    nearby_lakes = unary_union([lake_parts[i] for i in nearby_lake_idx])
+                    candidate = candidate.difference(nearby_lakes)
+            if not candidate.is_empty:
+                paintable = candidate
+                if factor > 1:
+                    widened += 1
+                break
+        if paintable is None:
             dropped += 1
             continue
         features.append({"cell_id": cell.cell_id, "geometry": mapping(paintable)})
 
     with gzip.open(out_path, "wt", encoding="utf-8") as fh:
         json.dump(features, fh)
-    print(f"Wrote {len(features)} land-clipped cell polygons -> {out_path} ({dropped} cells had no land overlap)")
+    print(
+        f"Wrote {len(features)} land-clipped cell polygons -> {out_path} "
+        f"({dropped} cells had no land overlap even after widening, {widened} needed widening)"
+    )
 
 
 if __name__ == "__main__":

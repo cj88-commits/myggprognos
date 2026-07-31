@@ -64,8 +64,21 @@ jobs:
 
       - name: Run forecast pipeline
         id: run
-        env:
-          OPEN_METEO_BASE_URL: ${{ vars.OPEN_METEO_BASE_URL }}
+        # NOTE: do not set OPEN_METEO_BASE_URL here. This previously read
+        # ${{ vars.OPEN_METEO_BASE_URL }}, an org/repo Actions variable that
+        # was never configured -- GitHub renders that as an EMPTY STRING,
+        # not "unset", and os.environ.get(key, default) in config.py only
+        # falls back to the default when the key is truly absent from the
+        # environment. So every forecast (non-archive) weather request in
+        # every run used base_url="" and failed outright ("Request URL is
+        # missing an 'http://' or 'https://' protocol"), for literally
+        # every batch -- confirmed in a completed run's logs (371/371
+        # forecast batches failed). The pipeline silently fell back to
+        # history-only weather for almost every cell instead of erroring
+        # loudly, which is very likely why computed risk read near-zero
+        # almost everywhere in that run's output. OPEN_METEO_ARCHIVE_URL
+        # has never had an env override here and has always worked
+        # correctly via config.py's hardcoded default -- do the same here.
         run: |
           if [ "${{ inputs.sample }}" = "true" ]; then
             python scripts/run_forecast.py --sample --verbose

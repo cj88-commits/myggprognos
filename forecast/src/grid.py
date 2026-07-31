@@ -128,7 +128,57 @@ def generate_grid(
         lat += lat_step
         row += 1
 
+    if boundary is not None and (max_cells is None or len(cells) < max_cells):
+        cells.extend(_supplementary_island_cells(cells, boundary, max_cells))
+
     return cells
+
+
+def _supplementary_island_cells(cells: list[GridCell], boundary, max_cells: int | None) -> list[GridCell]:
+    """Add one extra cell for every distinct piece of land (island) the
+    regular lattice above misses entirely.
+
+    The lattice only places a point every `resolution_km`, so any island
+    smaller than that spacing -- and unluckily positioned between lattice
+    points -- gets zero cells and can never be coloured on the map,
+    regardless of any frontend rendering technique. Rather than shrinking
+    the resolution everywhere (a ~6x cell-count/API-cost increase for 5km
+    -> 2km), this surgically fixes just the islands that would otherwise
+    be completely uncovered: for every polygon part of the boundary with
+    no existing lattice point inside it, add a single cell at that part's
+    `representative_point()` (guaranteed to lie inside the polygon, unlike
+    a plain centroid which can fall outside for concave/crescent shapes).
+    """
+    try:
+        from shapely.geometry import Point
+    except ImportError:
+        return []
+
+    if boundary.geom_type == "Polygon":
+        parts = [boundary]
+    elif boundary.geom_type == "MultiPolygon":
+        parts = list(boundary.geoms)
+    else:
+        return []
+
+    existing_points = [Point(c.longitude, c.latitude) for c in cells]
+    extra: list[GridCell] = []
+    for i, part in enumerate(parts):
+        if any(part.contains(p) for p in existing_points):
+            continue
+        rep = part.representative_point()
+        extra.append(
+            GridCell(
+                cell_id=f"SE_ISLE_{i:04d}",
+                latitude=round(rep.y, 5),
+                longitude=round(rep.x, 5),
+                region=_approx_region(rep.y),
+            )
+        )
+        if max_cells is not None and len(cells) + len(extra) >= max_cells:
+            break
+
+    return extra
 
 
 def generate_sample_grid() -> list[GridCell]:
