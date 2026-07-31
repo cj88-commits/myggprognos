@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import maplibregl, { GeoJSONSource, Map as MaplibreMap, Marker, Popup } from "maplibre-gl";
+import { fetchJsonGz } from "../lib/fetchJsonGz";
 import { useI18n } from "../i18n";
 import { RISK_COLOR_STOPS } from "../lib/riskModel";
 import type { CellRecord, LayerKey } from "../types/forecast";
@@ -12,137 +13,64 @@ const SWEDEN_INITIAL_ZOOM = 4.2;
 // MapLibre's own demotiles.maplibre.org style was used previously, but its
 // "countries" layer fills each country with a distinct, fully-saturated
 // flat colour (Sweden purple, Norway green, Finland orange, ...) for demo
-// purposes -- easily mistaken for graded risk data, and it visually
-// drowned out the sparse sample-mode risk circles entirely. Positron has
-// no such per-country fills. Override via VITE_MAP_STYLE_URL for a richer
-// style (e.g. MapTiler, Stadia Maps) if desired; see README.
+// purposes -- easily mistaken for graded risk data. Positron has no such
+// per-country fills. Override via VITE_MAP_STYLE_URL for a richer style
+// (e.g. MapTiler, Stadia Maps) if desired; see README.
 const DEFAULT_STYLE_URL = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
 
-// Both squares (tiled grid -- hard-edged, "Minecraft blocks") and
-// individually-visible blurred circles ("weird", separate blobs) were
-// tried and rejected live: the ask is a genuinely continuous coloured
-// *area*, not any per-cell shape. MapLibre's "heatmap" layer type renders
-// from the same point data as a single blended density surface with no
-// per-feature outline at all, which is the right primitive for that.
-//
-// heatmap-color is keyed on the synthetic ["heatmap-density"] axis (0-1,
-// relative local concentration of nearby weighted points), not the raw
-// "value" property directly -- that's a hard requirement of the paint
-// property, not a stylistic choice.
-const RISK_HEATMAP_COLOR_EXPRESSION: maplibregl.ExpressionSpecification = [
-  "interpolate",
-  ["linear"],
-  ["heatmap-density"],
-  0, "rgba(0,0,0,0)",
-  ...RISK_COLOR_STOPS.flatMap((stop) => [Math.max(stop.value / 100, 0.001), stop.color] as [number, string]),
-];
-
-const CONFIDENCE_HEATMAP_COLOR_EXPRESSION: maplibregl.ExpressionSpecification = [
-  "interpolate",
-  ["linear"],
-  ["heatmap-density"],
-  0, "rgba(0,0,0,0)",
-  0.001, "#d9432e",
-  0.4, "#f2c94c",
-  0.7, "#2e8b4f",
-  1, "#1c4a32",
-];
-
-// heatmap-weight: 0-100 risk -> 0-1 density contribution. -1 (no-data
-// sentinel) contributes nothing (stays transparent, correctly showing
-// "no data" rather than fabricating a value). A real value of 0 still
-// gets a small non-zero floor (0.25, not 0) so a genuinely-covered
-// very-low-risk area reads as pale green, not gaps of transparency --
-// otherwise the (currently nationwide-low-risk) live data would render as
-// almost nothing at all.
-const HEATMAP_WEIGHT_EXPRESSION: maplibregl.ExpressionSpecification = [
+// Smooth 0-100 green -> yellow-green -> yellow -> orange -> red ramp (see
+// lib/riskModel.ts::RISK_COLOR_STOPS, shared with any other continuous risk
+// display), rather than the old 0-10 banded scale.
+const RISK_COLOR_EXPRESSION: maplibregl.ExpressionSpecification = [
   "interpolate",
   ["linear"],
   ["get", "value"],
-  -1, 0,
-  0, 0.25,
-  100, 1,
+  ...RISK_COLOR_STOPS.flatMap((stop) => [stop.value, stop.color] as [number, string]),
 ];
 
-// Must match forecast/src/config.py::GRID_RESOLUTION_KM -- sized so each
-// point's blend radius comfortably overlaps its neighbours at the grid's
-// real ~5km spacing, using the standard Web Mercator ground-resolution
-// formula to keep that overlap consistent at every zoom level (a fixed
-// pixel radius doesn't scale with zoom, and was the root cause of the very
-// first version of this layer showing gaps between dots).
-//
-// Tile size is 512px, not the classic 256px XYZ raster convention -- that's
-// MapLibre GL's own default for vector styles, confirmed against this map
-// instance via map.project() on two known-adjacent grid points.
-const GRID_CELL_SIZE_KM = 5.0;
-// Generous on purpose: color is meant to reach past the true coastline now
-// that it renders underneath the basemap's own water layer (see
-// WATER_LAYER_ID below), which clips away anything that spills onto the
-// sea/lakes -- so there's no more downside to erring on the side of "too
-// much blur", only upside (closes the white gaps that used to show at the
-// coast when the grid's outermost cells sat a few km inland of it). Raised
-// further after fixing the WATER_LAYER_ID insertion-point bug below, which
-// meant the basemap was never actually clipping overspill before now --
-// there was no real safety net to lean on until that was fixed.
-const CELL_OVERLAP_FACTOR = 4.5;
-
-// CARTO Positron's water fill covers sea AND lakes as a single unified
-// "water" source-layer (standard OpenMapTiles schema -- there's no
-// separate ID per lake). Inserting our heatmap layer immediately before
-// "water" means the basemap draws water on top of our colour wherever
-// there actually is water, without us needing our own coastline geometry
-// at all.
-//
-// IMPORTANT: this must be "water", not "water_shadow" -- water_shadow is a
-// subtle bevel effect drawn just AFTER "water" (on top of it, not before),
-// confirmed by inspecting the style's actual layers array. Using
-// "water_shadow" as the insertion point therefore placed our layer
-// *between* water and water_shadow, i.e. ABOVE the real water fill: the
-// basemap was never actually clipping the sea, only our own lakes-mask
-// layer (added separately, below) was doing any real masking. That's why
-// coastline coverage looked inconsistent -- it was pure coincidence of
-// blur falloff, not real clipping.
-const WATER_LAYER_ID = "water";
-const SWEDEN_BBOX_MID_LAT_DEG = (55.2 + 69.1) / 2;
-const EARTH_CIRCUMFERENCE_M = 40075016.686;
-const TILE_SIZE_PX = 512;
-
-function metersPerPixelAtZoom(zoom: number, latRad: number): number {
-  return (EARTH_CIRCUMFERENCE_M * Math.cos(latRad)) / (TILE_SIZE_PX * Math.pow(2, zoom));
-}
-
-function heatmapRadiusPxAtZoom(zoom: number): number {
-  const latRad = (SWEDEN_BBOX_MID_LAT_DEG * Math.PI) / 180;
-  const metersPerPixel = metersPerPixelAtZoom(zoom, latRad);
-  const halfSpacingM = (GRID_CELL_SIZE_KM * 1000) / 2;
-  return (halfSpacingM * CELL_OVERLAP_FACTOR) / metersPerPixel;
-}
-
-const HEATMAP_RADIUS_ZOOM_STOPS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
-const HEATMAP_RADIUS_EXPRESSION: maplibregl.ExpressionSpecification = [
+const CONFIDENCE_COLOR_EXPRESSION: maplibregl.ExpressionSpecification = [
   "interpolate",
   ["linear"],
-  ["zoom"],
-  ...HEATMAP_RADIUS_ZOOM_STOPS.flatMap((z) => [z, heatmapRadiusPxAtZoom(z)] as [number, number]),
+  ["get", "value"],
+  0, "#d9432e",
+  40, "#f2c94c",
+  70, "#2e8b4f",
+  100, "#1c4a32",
 ];
 
+// Precomputed once by scripts/prepare_cell_geometry.py: each grid cell's
+// actual ~5km square, clipped to (Sweden's real land shape minus its
+// lakes) using the true, detailed boundary/lake polygons. This is
+// deliberately NOT a heatmap or a fixed-size shape approximated with blur
+// -- every rendered polygon *is* real land, by construction, so there is
+// no coastline to "reach" and no water to accidentally paint over. Two
+// earlier approaches were tried and rejected: tiled squares with no water
+// awareness (coloured lakes, blocky look) and a blurred heatmap masked by
+// the basemap's water layer (still bled onto the sea/lakes wherever the
+// blur radius outran the mask, and never looked like literal coloured
+// land in the first place -- the actual ask).
+const CELL_GEOMETRY_URL = "data/static/cell_geometry.json.gz";
+
+interface CellGeometryEntry {
+  cell_id: string;
+  geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon;
+}
+
 function buildFeatureCollection(
-  cells: CellRecord[],
+  cellGeometry: CellGeometryEntry[],
   valuesByCellId: Record<string, number> | null
 ): GeoJSON.FeatureCollection {
   return {
     type: "FeatureCollection",
-    features: cells.map((cell) => ({
+    features: cellGeometry.map((entry) => ({
       type: "Feature",
-      geometry: { type: "Point", coordinates: [cell.longitude, cell.latitude] },
+      geometry: entry.geometry,
       properties: {
-        cell_id: cell.cell_id,
-        lat: cell.latitude,
-        lon: cell.longitude,
+        cell_id: entry.cell_id,
         // -1 is a "no data" sentinel (kept numeric so it works inside
         // interpolate/case expressions, which don't type-check against
         // null literals).
-        value: valuesByCellId?.[cell.cell_id] ?? -1,
+        value: valuesByCellId?.[entry.cell_id] ?? -1,
       },
     })),
   };
@@ -160,7 +88,6 @@ export interface MapViewProps {
 }
 
 export function MapView({
-  cells,
   valuesByCellId,
   layer,
   selectedLat,
@@ -176,11 +103,33 @@ export function MapView({
   const selectedMarkerRef = useRef<Marker | null>(null);
   const userMarkerRef = useRef<Marker | null>(null);
   const reportMarkersRef = useRef<Marker[]>([]);
+  const [cellGeometry, setCellGeometry] = useState<CellGeometryEntry[]>([]);
 
-  // Rebuilding a ~18k-feature collection on every render (rather than only
-  // when cells/values actually change) would be wasteful GC churn at
+  // Static (doesn't change per forecast run) -- fetched once, independent
+  // of the cells/values props.
+  useEffect(() => {
+    let cancelled = false;
+    fetchJsonGz<CellGeometryEntry[]>(CELL_GEOMETRY_URL)
+      .then((data) => {
+        if (!cancelled) setCellGeometry(data);
+      })
+      .catch(() => {
+        // Non-fatal: the map still functions (basemap + selection), just
+        // without the risk colouring, and the location panel's own data
+        // fetches are unaffected.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Rebuilding an ~18k-feature collection on every render (rather than only
+  // when geometry/values actually change) would be wasteful GC churn at
   // full-Sweden scale.
-  const featureCollection = useMemo(() => buildFeatureCollection(cells, valuesByCellId), [cells, valuesByCellId]);
+  const featureCollection = useMemo(
+    () => buildFeatureCollection(cellGeometry, valuesByCellId),
+    [cellGeometry, valuesByCellId]
+  );
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -200,67 +149,45 @@ export function MapView({
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     mapRef.current = map;
 
-    map.on("load", async () => {
+    map.on("load", () => {
       map.addSource("cells", { type: "geojson", data: featureCollection });
-      // Fall back to adding on top if the style doesn't have this layer
-      // (e.g. a custom VITE_MAP_STYLE_URL override) rather than throwing.
-      const beforeId = map.getLayer(WATER_LAYER_ID) ? WATER_LAYER_ID : undefined;
+
+      // Insert below water so any real map labels/road lines that sit on
+      // top of water (rare, but the style declares them later) still
+      // render correctly -- our polygons never actually overlap water
+      // themselves (that's the whole point of the precomputed geometry),
+      // this is purely about staying under roads/place labels for
+      // legibility, same as any other data overlay. Falls back to adding
+      // on top if the style doesn't have this layer (e.g. a custom
+      // VITE_MAP_STYLE_URL override) rather than throwing.
+      const beforeId = map.getLayer("water") ? "water" : undefined;
       map.addLayer(
         {
           id: "cells-heat",
-          type: "heatmap",
+          type: "fill",
           source: "cells",
           paint: {
-            "heatmap-weight": HEATMAP_WEIGHT_EXPRESSION,
-            "heatmap-intensity": 1,
-            "heatmap-radius": HEATMAP_RADIUS_EXPRESSION,
-            "heatmap-color": layer === "confidence" ? CONFIDENCE_HEATMAP_COLOR_EXPRESSION : RISK_HEATMAP_COLOR_EXPRESSION,
-            "heatmap-opacity": 0.85,
+            "fill-color": layer === "confidence" ? CONFIDENCE_COLOR_EXPRESSION : RISK_COLOR_EXPRESSION,
+            "fill-opacity": ["case", ["<", ["get", "value"], 0], 0.15, 0.8],
           },
         },
         beforeId
       );
 
-      // Mask lakes back out from underneath the heatmap. The basemap's own
-      // "water" layer already does this for the sea, but its vector tiles
-      // generalise away smaller lakes at lower zoom levels (that's *why*
-      // lakes were still showing coloured after the first attempt at this
-      // -- relying solely on the basemap's zoom-dependent tiles isn't
-      // reliable). This is a small, static, curated set of Sweden's actual
-      // lakes (Natural Earth 10m Lakes, see data/static/sweden_lakes.geojson
-      // and scripts that built it) that doesn't change per forecast run,
-      // so it's fetched once here rather than routed through the
-      // generated-data pipeline.
-      try {
-        const lakesRes = await fetch("data/static/sweden_lakes.geojson");
-        if (lakesRes.ok) {
-          const lakesGeoJson = await lakesRes.json();
-          map.addSource("lakes", { type: "geojson", data: lakesGeoJson });
-          map.addLayer(
-            {
-              id: "lakes-mask",
-              type: "fill",
-              source: "lakes",
-              // Matches CARTO Positron's own "water" fill-color exactly, so
-              // a lake reads identically whether it's masked by us or by
-              // the basemap.
-              paint: { "fill-color": "#d4dadc", "fill-opacity": 1 },
-            },
-            beforeId
-          );
+      map.on("click", "cells-heat", (e) => {
+        const feature = e.features?.[0];
+        if (feature) {
+          onSelectLocation(e.lngLat.lat, e.lngLat.lng);
         }
-      } catch {
-        // Non-fatal: worst case, lake masking falls back to whatever the
-        // basemap's own water tiles provide at the current zoom.
-      }
-
-      // A heatmap layer is a single blended density surface, not discrete
-      // per-feature shapes, so there's no individual "cell" to hit-test
-      // against on click -- selecting the exact clicked point and letting
-      // the app's existing nearestCell() lookup resolve the closest real
-      // grid cell (already how every other selection path works) is both
-      // simpler and more correct than trying to query a feature here.
-      map.on("click", (e) => onSelectLocation(e.lngLat.lat, e.lngLat.lng));
+      });
+      map.on("click", (e) => {
+        const features = map.queryRenderedFeatures(e.point, { layers: ["cells-heat"] });
+        if (features.length === 0) {
+          onSelectLocation(e.lngLat.lat, e.lngLat.lng);
+        }
+      });
+      map.on("mouseenter", "cells-heat", () => (map.getCanvas().style.cursor = "pointer"));
+      map.on("mouseleave", "cells-heat", () => (map.getCanvas().style.cursor = ""));
 
       readyRef.current = true;
     });
@@ -273,18 +200,17 @@ export function MapView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Update layer data + colour expression when cells/values/layer change.
+  // Update layer data + colour expression when geometry/values/layer change.
   //
-  // The real cells/daily/hourly data and the map style (CARTO style.json +
+  // The real cell geometry/values and the map style (CARTO style.json +
   // sprite + glyphs + vector tiles) load in parallel with no guaranteed
   // order. If this effect runs *before* the map's "load" event -- e.g. the
   // style takes longer than the data fetch, which is common at full-Sweden
   // scale (~18k features) -- it used to bail out via the `!readyRef.current`
   // guard and never retry, permanently leaving the source's initial empty
-  // FeatureCollection (captured at mount, before data existed) on screen:
-  // the map would render with zero visible risk circles even though every
-  // fetch had actually succeeded. Deferring the same update via `map.once`
-  // when not yet ready guarantees it's applied exactly once "load" fires.
+  // FeatureCollection (captured at mount, before data existed) on screen.
+  // Deferring the same update via `map.once` when not yet ready guarantees
+  // it's applied exactly once "load" fires.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -296,8 +222,8 @@ export function MapView({
       if (map.getLayer("cells-heat")) {
         map.setPaintProperty(
           "cells-heat",
-          "heatmap-color",
-          layer === "confidence" ? CONFIDENCE_HEATMAP_COLOR_EXPRESSION : RISK_HEATMAP_COLOR_EXPRESSION
+          "fill-color",
+          layer === "confidence" ? CONFIDENCE_COLOR_EXPRESSION : RISK_COLOR_EXPRESSION
         );
       }
     };
