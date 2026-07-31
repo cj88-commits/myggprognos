@@ -80,17 +80,29 @@ const GRID_CELL_SIZE_KM = 5.0;
 // WATER_LAYER_ID below), which clips away anything that spills onto the
 // sea/lakes -- so there's no more downside to erring on the side of "too
 // much blur", only upside (closes the white gaps that used to show at the
-// coast when the grid's outermost cells sat a few km inland of it).
-const CELL_OVERLAP_FACTOR = 3.4;
+// coast when the grid's outermost cells sat a few km inland of it). Raised
+// further after fixing the WATER_LAYER_ID insertion-point bug below, which
+// meant the basemap was never actually clipping overspill before now --
+// there was no real safety net to lean on until that was fixed.
+const CELL_OVERLAP_FACTOR = 4.5;
 
 // CARTO Positron's water fill covers sea AND lakes as a single unified
 // "water" source-layer (standard OpenMapTiles schema -- there's no
 // separate ID per lake). Inserting our heatmap layer immediately before
-// it means the basemap draws water on top of our colour wherever there
-// actually is water, without us needing our own lake/coastline geometry
-// at all. "water_shadow" is a subtle bevel drawn just before "water"
-// itself, so using it as the insertion point puts us below both.
-const WATER_LAYER_ID = "water_shadow";
+// "water" means the basemap draws water on top of our colour wherever
+// there actually is water, without us needing our own coastline geometry
+// at all.
+//
+// IMPORTANT: this must be "water", not "water_shadow" -- water_shadow is a
+// subtle bevel effect drawn just AFTER "water" (on top of it, not before),
+// confirmed by inspecting the style's actual layers array. Using
+// "water_shadow" as the insertion point therefore placed our layer
+// *between* water and water_shadow, i.e. ABOVE the real water fill: the
+// basemap was never actually clipping the sea, only our own lakes-mask
+// layer (added separately, below) was doing any real masking. That's why
+// coastline coverage looked inconsistent -- it was pure coincidence of
+// blur falloff, not real clipping.
+const WATER_LAYER_ID = "water";
 const SWEDEN_BBOX_MID_LAT_DEG = (55.2 + 69.1) / 2;
 const EARTH_CIRCUMFERENCE_M = 40075016.686;
 const TILE_SIZE_PX = 512;
