@@ -259,6 +259,7 @@ class OpenMeteoProvider:
         separate archive-API call or client-side merge/de-dup needed."""
         points = list(points)
         results: dict[str, HourlyWeather] = {}
+        total_batches = (len(points) + self.batch_size - 1) // self.batch_size
 
         # One shared client (one persistent, keep-alive connection) for
         # every batch in this call, instead of opening + closing a brand
@@ -271,7 +272,15 @@ class OpenMeteoProvider:
         owns_client = self._client is None
         client = self._client or httpx.Client(timeout=self.timeout_s)
         try:
-            for batch in self._batched(points):
+            for batch_num, batch in enumerate(self._batched(points), start=1):
+                # Periodic progress at INFO (not per-batch, which would be
+                # noisy at ~370 batches) -- long unattended runs (full
+                # grid, ~20+ min even in the best case) were previously
+                # silent until the very end, making it impossible to tell
+                # "still working" from "stuck" without downloading logs
+                # after the fact.
+                if batch_num == 1 or batch_num % 10 == 0 or batch_num == total_batches:
+                    logger.info("Weather fetch progress: batch %d/%d", batch_num, total_batches)
                 params = {
                     "latitude": ",".join(str(p.latitude) for p in batch),
                     "longitude": ",".join(str(p.longitude) for p in batch),

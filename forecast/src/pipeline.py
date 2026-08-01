@@ -33,6 +33,13 @@ from confidence import compute_confidence
 from explanation import format_factor_strings, generate_explanation
 from feature_engineering import compute_features, precompute_rolling_windows
 from grid import GridCell, generate_sample_grid, load_grid, save_grid
+from history_cache import (
+    load_history_cache,
+    merge_cached_and_fresh,
+    past_days_to_fetch,
+    save_history_cache,
+    split_history_for_cache,
+)
 from model import compute_score, risk_category
 from output import (
     OutputValidationError,
@@ -51,7 +58,7 @@ from static_features import (
     load_static_features,
     save_static_features,
 )
-from weather import OpenMeteoProvider, SyntheticWeatherProvider, WeatherProvider
+from weather import HourlyWeather, OpenMeteoProvider, SyntheticWeatherProvider, WeatherProvider
 
 logger = logging.getLogger("mosquito_forecast.pipeline")
 
@@ -77,15 +84,27 @@ def run_pipeline(
     weather_provider: WeatherProvider | None = None,
     static_placeholder: bool | None = None,
     run_time: datetime | None = None,
+    history_cache_path: Path | None = None,
+    cells_override: list[GridCell] | None = None,
 ) -> dict:
     output_dir = output_dir or (GENERATED_DATA_DIR / "latest")
+    # Deliberately a sibling of output_dir, not inside it -- output_dir
+    # (data/generated/latest) gets bundled straight into the public
+    # frontend build; this raw weather cache never should be.
+    history_cache_path = history_cache_path or (GENERATED_DATA_DIR / "weather_history_cache.json.gz")
     run_time = run_time or datetime.now(timezone.utc)
     config = load_model_config()
 
     grid_path = SAMPLE_DATA_DIR / "grid.json" if sample else STATIC_DATA_DIR / "grid.json"
     static_path = SAMPLE_DATA_DIR / "static_features.json" if sample else STATIC_DATA_DIR / "cell_features.json"
 
-    if sample:
+    if cells_override is not None:
+        # Test-only escape hatch: exercise the real (non-sample) fetch +
+        # caching path against a small in-memory grid instead of the real
+        # ~18.6k-cell data/static/grid.json, which would make this a slow,
+        # environment-dependent integration test rather than a unit test.
+        cells = cells_override
+    elif sample:
         cells = generate_sample_grid()
         save_grid(cells, grid_path)
     elif grid_path.exists():
@@ -120,11 +139,41 @@ def run_pipeline(
     today = run_time.date()
     forecast_end = today + timedelta(days=6)
 
-    # One combined fetch (see weather.py::fetch_combined) instead of a
-    # separate history + forecast call -- halves total request volume,
-    # and Open-Meteo already returns a single sorted, non-overlapping
-    # series, so no client-side merge is needed either.
-    weather_by_cell = provider.fetch_combined(cells, HISTORY_DAYS_BACK, FORECAST_DAYS)
+    if sample:
+        # Sample mode uses synthetic, instant, free data -- no caching
+        # benefit, and always-full-fetch keeps existing tests' assertions
+        # (which check specific reproducible values) simple.
+        weather_by_cell = provider.fetch_combined(cells, HISTORY_DAYS_BACK, FORECAST_DAYS)
+    else:
+        # Forecast data (today..+FORECAST_DAYS) must always be refetched
+        # fresh -- it changes as Open-Meteo's models update. A given PAST
+        # hour's observed weather never changes once it's in the past
+        # though, so a warm cache only needs a small gap-filling fetch
+        # instead of the full HISTORY_DAYS_BACK window every single run
+        # (see history_cache.py -- refetching the full 21 days from
+        # scratch on every 6-hourly run was the dominant driver of both
+        # pipeline runtime and Open-Meteo rate-limiting).
+        cached_history = load_history_cache(history_cache_path)
+        needed_past_days = past_days_to_fetch(history_cache_path, HISTORY_DAYS_BACK)
+        logger.info(
+            "Weather history cache: %s -> fetching %d day(s) of history this run",
+            "warm" if needed_past_days < HISTORY_DAYS_BACK else "cold/stale (full backfill)",
+            needed_past_days,
+        )
+        fresh_by_cell = provider.fetch_combined(cells, needed_past_days, FORECAST_DAYS)
+
+        weather_by_cell = {}
+        new_cache: dict[str, HourlyWeather] = {}
+        for cell in cells:
+            fresh = fresh_by_cell.get(cell.cell_id)
+            if fresh is None:
+                continue
+            merged = merge_cached_and_fresh(cached_history.get(cell.cell_id), fresh, run_time)
+            weather_by_cell[cell.cell_id] = merged
+            new_cache[cell.cell_id] = split_history_for_cache(merged, run_time, HISTORY_DAYS_BACK)
+
+        save_history_cache(history_cache_path, new_cache)
+
     for cell in cells:
         if cell.cell_id not in weather_by_cell:
             logger.error("No weather data available for cell %s; skipping", cell.cell_id)

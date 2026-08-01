@@ -248,36 +248,60 @@ features, live Open-Meteo weather. Run via `python scripts/run_forecast.py` or t
 
 ### Performance at full-Sweden scale
 
-Two optimisations make the ~18k-cell grid practical to (re)compute every 6 hours in CI:
+`forecast/src/feature_engineering.py::precompute_rolling_windows` computes numpy cumulative sums for
+temperature/precipitation/soil-moisture once per cell, so the 49 hourly + 28 daypart `compute_features`
+calls per cell become O(1) index lookups instead of re-parsing timestamps and re-scanning multi-week
+windows on every call. A full pipeline run over all ~18,000 cells (synthetic weather, to isolate CPU cost
+from network time) completes in **about 6 minutes** on this alone — CPU cost was never the bottleneck at
+scale, network/API behaviour was (see below).
 
-- `forecast/src/pipeline.py::merge_weather` builds a `{time: index}` lookup once per cell instead of calling
-  `list.index()` repeatedly (which turns an O(n) lookup into an accidental O(n²) scan per cell — the
-  single biggest hidden cost at scale before this fix).
-- `forecast/src/feature_engineering.py::precompute_rolling_windows` computes numpy cumulative sums for
-  temperature/precipitation/soil-moisture once per cell, so the 49 hourly + 28 daypart `compute_features`
-  calls per cell become O(1) index lookups instead of re-parsing timestamps and re-scanning multi-week
-  windows on every call.
+### Open-Meteo weather fetching: history caching, one combined request, connection reuse
 
-With both in place, a full pipeline run over all ~18,000 cells (synthetic weather, to isolate CPU cost from
-network time) completes in **about 6 minutes** — comfortably inside GitHub Actions' job limits.
+Three real production incidents shaped how `forecast/src/weather.py::OpenMeteoProvider` and
+`forecast/src/history_cache.py` fetch weather, roughly in the order they were found:
 
-### Open-Meteo rate limiting at full-Sweden scale
+1. **Refetching a full 21-day history window on every single run was the root problem.** The model genuinely
+   needs `HISTORY_DAYS_BACK = 21` days of past weather (`forecast/src/model.py`'s `standing_water` term --
+   10% weight on population potential -- is driven by 21-day accumulated rainfall and "days since meaningful
+   rain"), but a given *past* hour's observed weather never changes once it's in the past, unlike the
+   forward-looking forecast, which must always be refetched fresh. Re-requesting the same ~20 days of already-
+   known history every 6 hours was pure waste and the single biggest driver of both runtime and rate-limiting.
+   `history_cache.py` now persists a rolling 21-day-per-cell history cache (`data/generated/weather_history_cache.json.gz`,
+   committed like `data/generated/latest`, but deliberately *not* inside it so it never ships to the public
+   frontend build). Each run fetches only `INCREMENTAL_PAST_DAYS = 2` days (a small gap-filling window, plus
+   safety margin) if the cache is warm (updated within `CACHE_FRESH_THRESHOLD_HOURS = 48`), or the full 21-day
+   window if the cache is missing or stale -- the same code path handles both the very first "backfill" run and
+   any future recovery from a lapse, with no special-cased bootstrap logic. This cuts the per-request hourly
+   payload from 672 hours (21 history + 7 forecast) down to roughly 216 hours on a routine run.
+2. **History and forecast used to be two separate API calls per batch** (one to Open-Meteo's archive API, one
+   to its forecast API). `OpenMeteoProvider.fetch_combined()` now makes one request per batch using the
+   forecast endpoint's `past_days` parameter, which natively returns recent history immediately followed by
+   the forward forecast as a single continuous, sorted, non-overlapping series -- no separate archive call, no
+   client-side merge/de-dup step. Combined with (1), routine runs need roughly 373 requests total instead of
+   the ~1,500+ a naive "21-day history + 7-day forecast, two calls, every run" design would need.
+3. **A fresh TCP+TLS connection was being opened and closed for every single batch request.** At ~370
+   sequential batches that's ~370 handshakes instead of one persistent connection reused throughout, and it
+   turned out to be a major source of `"_ssl.c:993: The handshake operation timed out"` failures in production
+   (one live run saw 136/373 batches need at least one retry). `fetch_combined()` now opens one `httpx.Client`
+   for the whole call and reuses it for every batch.
 
-The first live full-grid run (~700-800 batched HTTP requests, no pacing between them) got rate-limited (HTTP
-429) by Open-Meteo's free archive API on nearly every request, and ran for over 2 hours before the job died
-without completing — the original short exponential backoff (1s/2s/4s...) just re-hit the same quota window
-on every retry instead of ever letting it reset. Fixed in `forecast/src/weather.py::OpenMeteoProvider`:
+**Known open question, not yet fully resolved:** an earlier live full-grid run still got HTTP 429 (rate
+limited) by Open-Meteo on a large fraction of batches even after connection reuse -- proactive pacing
+(`WEATHER_REQUEST_PACING_S`, default 2s, a fixed delay before every real request) and rate-limit-specific
+backoff (`WEATHER_RATE_LIMIT_BACKOFF_S`, default 30s, linearly scaling instead of the generic exponential
+backoff used for other transient errors) both help individual batches recover, but whether Open-Meteo's real
+limit is closer to "per-request complexity" (which the history-cache/merge changes above directly reduce) or
+"total requests per IP per hour/day" (which they don't) is still an open question -- local testing to
+disambiguate this got confounded by the local test machine's own IP having made many requests earlier the same
+day. The history-cache change is a real win regardless (roughly 70% less data fetched per routine run, and
+correspondingly less total time spent exposed to any time-windowed quota), but if 429s are still frequent on a
+live run after this change, the next lever to pull is `WEATHER_REQUEST_PACING_S`, not batch payload size.
 
-- **Proactive pacing** (`WEATHER_REQUEST_PACING_S`, default 2s) — a fixed delay before every real (non-cached)
-  request, spacing consecutive batches out so the rate limit is never tripped in the first place, rather than
-  only reacting after the fact.
-- **Rate-limit-specific backoff** (`WEATHER_RATE_LIMIT_BACKOFF_S`, default 30s) — HTTP 429 specifically now
-  gets a much longer, linearly-scaling wait instead of the generic exponential backoff used for other
-  transient errors, as a safety net for occasional bursts pacing alone doesn't prevent.
-
-Verified against the live API with a 150-cell subset (3 batches each direction): all 6 requests succeeded on
-the first attempt with zero 429s. Expect full-grid production runs (~728 requests × ~2-3s each) to take
-roughly 30-45 minutes end-to-end, dominated by this deliberate pacing rather than the ~6 minute CPU cost.
+GitHub-hosted runners also have a **hard 6-hour job execution ceiling that `timeout-minutes` cannot exceed**
+(confirmed empirically: setting it to 480 didn't help, the job was still killed at exactly 360 minutes) --
+`forecast.yml`'s `timeout-minutes: 360` is set to the platform max explicitly, as documentation that this
+isn't an oversight, not as a working mitigation. The real mitigation is keeping the pipeline reliably well
+under that ceiling via the fetch-volume reductions above.
 
 ## GitHub Actions setup
 
