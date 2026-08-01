@@ -115,3 +115,54 @@ def test_run_pipeline_fetches_full_history_on_cold_cache_then_incremental_on_war
     )
 
     assert provider_2.calls == [(INCREMENTAL_PAST_DAYS, 7)]
+
+
+class _CrashesAfterNCallsProvider:
+    """Simulates the process being killed mid-fetch (e.g. GitHub's hard 6h
+    job ceiling) by raising after a fixed number of fetch_combined calls
+    (each call = one chunk, see CACHE_CHECKPOINT_CHUNK_CELLS)."""
+
+    def __init__(self, run_time: datetime, crash_after_calls: int):
+        self._inner = SyntheticWeatherProvider(today=run_time)
+        self._crash_after_calls = crash_after_calls
+        self.calls = 0
+
+    def fetch_combined(self, points, past_days, forecast_days):
+        self.calls += 1
+        if self.calls > self._crash_after_calls:
+            raise RuntimeError("simulated mid-flight kill")
+        return self._inner.fetch_combined(points, past_days, forecast_days)
+
+
+def test_history_cache_survives_a_crash_partway_through_the_fetch(tmp_path):
+    from pipeline import CACHE_CHECKPOINT_CHUNK_CELLS
+    from history_cache import load_history_cache
+
+    # 2.5 chunks' worth of cells -- the crash happens after chunk 1
+    # completes but before chunk 2 does, so only the first chunk's cells
+    # should end up cached.
+    chunk_size = CACHE_CHECKPOINT_CHUNK_CELLS
+    cells = [
+        GridCell(cell_id=f"SE_{i:05d}", latitude=59.0, longitude=18.0, region="Svealand")
+        for i in range(int(chunk_size * 2.5))
+    ]
+    cache_path = tmp_path / "weather_history_cache.json.gz"
+    run_time = datetime(2026, 7, 29, 6, tzinfo=timezone.utc)
+
+    provider = _CrashesAfterNCallsProvider(run_time, crash_after_calls=1)
+    try:
+        run_pipeline(
+            sample=False,
+            output_dir=tmp_path / "out",
+            history_cache_path=cache_path,
+            cells_override=cells,
+            weather_provider=provider,
+            run_time=run_time,
+        )
+        assert False, "expected the simulated crash to propagate"
+    except RuntimeError:
+        pass
+
+    cached = load_history_cache(cache_path)
+    assert len(cached) == chunk_size
+    assert set(cached) == {c.cell_id for c in cells[:chunk_size]}

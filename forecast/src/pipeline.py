@@ -64,6 +64,14 @@ logger = logging.getLogger("mosquito_forecast.pipeline")
 
 DAYPART_REPRESENTATIVE_HOUR = {"morning": 8, "afternoon": 14, "evening": 20, "night": 23}
 HISTORY_DAYS_BACK = 21
+# Cells per fetch+cache-checkpoint chunk (~1000 cells = ~20 batches at the
+# default WEATHER_BATCH_SIZE). GitHub-hosted runners have a hard 6-hour job
+# ceiling that even a live-succeeding fetch can still hit at full-Sweden
+# scale; checkpointing the history cache after every chunk (not just once
+# at the very end) means a mid-flight kill still leaves every
+# already-processed chunk cached, so the next attempt only has to redo
+# what's left instead of starting completely over.
+CACHE_CHECKPOINT_CHUNK_CELLS = 1000
 
 
 def _record_from_score(cell_id: str, features, score, confidence_result) -> dict:
@@ -160,19 +168,28 @@ def run_pipeline(
             "warm" if needed_past_days < HISTORY_DAYS_BACK else "cold/stale (full backfill)",
             needed_past_days,
         )
-        fresh_by_cell = provider.fetch_combined(cells, needed_past_days, FORECAST_DAYS)
 
         weather_by_cell = {}
         new_cache: dict[str, HourlyWeather] = {}
-        for cell in cells:
-            fresh = fresh_by_cell.get(cell.cell_id)
-            if fresh is None:
-                continue
-            merged = merge_cached_and_fresh(cached_history.get(cell.cell_id), fresh, run_time)
-            weather_by_cell[cell.cell_id] = merged
-            new_cache[cell.cell_id] = split_history_for_cache(merged, run_time, HISTORY_DAYS_BACK)
+        for chunk_start in range(0, len(cells), CACHE_CHECKPOINT_CHUNK_CELLS):
+            chunk = cells[chunk_start : chunk_start + CACHE_CHECKPOINT_CHUNK_CELLS]
+            fresh_by_cell = provider.fetch_combined(chunk, needed_past_days, FORECAST_DAYS)
+            for cell in chunk:
+                fresh = fresh_by_cell.get(cell.cell_id)
+                if fresh is None:
+                    continue
+                merged = merge_cached_and_fresh(cached_history.get(cell.cell_id), fresh, run_time)
+                weather_by_cell[cell.cell_id] = merged
+                new_cache[cell.cell_id] = split_history_for_cache(merged, run_time, HISTORY_DAYS_BACK)
 
-        save_history_cache(history_cache_path, new_cache)
+            # Checkpoint after every chunk, not just once at the very end
+            # -- see CACHE_CHECKPOINT_CHUNK_CELLS above.
+            save_history_cache(history_cache_path, new_cache)
+            logger.info(
+                "Weather history cache checkpointed: %d/%d cells done",
+                len(new_cache),
+                len(cells),
+            )
 
     for cell in cells:
         if cell.cell_id not in weather_by_cell:
