@@ -25,15 +25,20 @@ permissions:
 jobs:
   run-forecast:
     runs-on: ubuntu-latest
-    # GitHub's default is 360 minutes (6 hours) when this isn't set -- a
-    # full-Sweden run (~18.6k cells) hit that ceiling and got silently
-    # killed mid-flight with nothing committed once the weather fetch
-    # started actually succeeding (see the OPEN_METEO_BASE_URL fix; before
-    # that, every forecast batch failed near-instantly, which perversely
-    # kept total runtime under 6h). Set well above the expected runtime,
-    # which should now be lower than before anyway now that history +
-    # forecast are one combined request per batch instead of two.
-    timeout-minutes: 480
+    # NOTE: 360 minutes (6 hours) is a hard ceiling for GitHub-hosted
+    # runners that timeout-minutes cannot raise (tried 480 here first --
+    # the job was still killed at exactly 6h, confirming this). A
+    # full-Sweden run hit that ceiling once the weather fetch started
+    # actually succeeding (see the OPEN_METEO_BASE_URL fix; before that,
+    # every forecast batch failed near-instantly, which perversely kept
+    # total runtime under 6h). The real fix is keeping the pipeline
+    # reliably well under 6h: see weather.py's fetch_combined (one
+    # request per batch instead of two) and its persistent shared
+    # httpx.Client (a fresh TCP+TLS handshake per one of ~370 batches was
+    # both slow and a major source of the timeouts that were driving
+    # retries). Left at the platform max explicitly so it's clear this
+    # isn't an oversight.
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
 

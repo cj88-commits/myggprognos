@@ -174,10 +174,7 @@ class OpenMeteoProvider:
         self.cache = cache or DiskCache()
         self._client = client
 
-    def _get_client(self) -> httpx.Client:
-        return self._client or httpx.Client(timeout=self.timeout_s)
-
-    def _request_with_retry(self, url: str, params: dict) -> dict:
+    def _request_with_retry(self, client: httpx.Client, url: str, params: dict) -> dict:
         cache_key = _cache_key(url, params)
         cached = self.cache.get(cache_key)
         if cached is not None:
@@ -191,39 +188,33 @@ class OpenMeteoProvider:
             time.sleep(self.pacing_s)
 
         last_exc: Exception | None = None
-        client = self._get_client()
-        owns_client = self._client is None
-        try:
-            for attempt in range(self.max_retries + 1):
-                try:
-                    response = client.get(url, params=params)
-                    response.raise_for_status()
-                    payload = response.json()
-                    _validate_response(payload)
-                    self.cache.set(cache_key, payload)
-                    return payload
-                except (httpx.TimeoutException, httpx.TransportError, httpx.HTTPStatusError, WeatherValidationError) as exc:
-                    last_exc = exc
-                    is_rate_limited = isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 429
-                    if attempt < self.max_retries:
-                        if is_rate_limited:
-                            # A 429 means "over quota right now" -- a short
-                            # 1s/2s/4s ramp just re-hits the same window.
-                            sleep_s = self.rate_limit_backoff_s * (attempt + 1)
-                        else:
-                            sleep_s = self.backoff_base_s * (2**attempt)
-                        logger.warning(
-                            "Weather request failed (attempt %d/%d)%s: %s. Retrying in %.1fs",
-                            attempt + 1,
-                            self.max_retries + 1,
-                            " [rate limited]" if is_rate_limited else "",
-                            exc,
-                            sleep_s,
-                        )
-                        time.sleep(sleep_s)
-        finally:
-            if owns_client:
-                client.close()
+        for attempt in range(self.max_retries + 1):
+            try:
+                response = client.get(url, params=params)
+                response.raise_for_status()
+                payload = response.json()
+                _validate_response(payload)
+                self.cache.set(cache_key, payload)
+                return payload
+            except (httpx.TimeoutException, httpx.TransportError, httpx.HTTPStatusError, WeatherValidationError) as exc:
+                last_exc = exc
+                is_rate_limited = isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 429
+                if attempt < self.max_retries:
+                    if is_rate_limited:
+                        # A 429 means "over quota right now" -- a short
+                        # 1s/2s/4s ramp just re-hits the same window.
+                        sleep_s = self.rate_limit_backoff_s * (attempt + 1)
+                    else:
+                        sleep_s = self.backoff_base_s * (2**attempt)
+                    logger.warning(
+                        "Weather request failed (attempt %d/%d)%s: %s. Retrying in %.1fs",
+                        attempt + 1,
+                        self.max_retries + 1,
+                        " [rate limited]" if is_rate_limited else "",
+                        exc,
+                        sleep_s,
+                    )
+                    time.sleep(sleep_s)
 
         raise WeatherValidationError(f"Weather request failed after retries: {last_exc}")
 
@@ -268,29 +259,45 @@ class OpenMeteoProvider:
         separate archive-API call or client-side merge/de-dup needed."""
         points = list(points)
         results: dict[str, HourlyWeather] = {}
-        for batch in self._batched(points):
-            params = {
-                "latitude": ",".join(str(p.latitude) for p in batch),
-                "longitude": ",".join(str(p.longitude) for p in batch),
-                "hourly": ",".join(HOURLY_VARIABLES),
-                "past_days": past_days,
-                "forecast_days": forecast_days,
-                "timezone": "UTC",
-            }
-            try:
-                payload = self._request_with_retry(self.base_url, params)
-            except WeatherValidationError:
-                logger.error("Weather fetch failed for batch of %d points; skipping batch", len(batch))
-                continue
-            payload_list = payload if isinstance(payload, list) else [payload]
-            if len(payload_list) != len(batch):
-                logger.error(
-                    "Open-Meteo returned %d results for %d requested points; skipping mismatched batch",
-                    len(payload_list),
-                    len(batch),
-                )
-                continue
-            results.update(self._parse_batch(batch, payload_list))
+
+        # One shared client (one persistent, keep-alive connection) for
+        # every batch in this call, instead of opening + closing a brand
+        # new TCP+TLS connection per batch. At full-Sweden scale (~370
+        # batches) a fresh handshake every single request turned out to be
+        # a major source of the "handshake operation timed out" failures
+        # seen in production (a live run had 136/373 batches need at least
+        # one retry) -- repeatedly hammering fresh connections instead of
+        # reusing a warm one is both slower and less reliable.
+        owns_client = self._client is None
+        client = self._client or httpx.Client(timeout=self.timeout_s)
+        try:
+            for batch in self._batched(points):
+                params = {
+                    "latitude": ",".join(str(p.latitude) for p in batch),
+                    "longitude": ",".join(str(p.longitude) for p in batch),
+                    "hourly": ",".join(HOURLY_VARIABLES),
+                    "past_days": past_days,
+                    "forecast_days": forecast_days,
+                    "timezone": "UTC",
+                }
+                try:
+                    payload = self._request_with_retry(client, self.base_url, params)
+                except WeatherValidationError:
+                    logger.error("Weather fetch failed for batch of %d points; skipping batch", len(batch))
+                    continue
+                payload_list = payload if isinstance(payload, list) else [payload]
+                if len(payload_list) != len(batch):
+                    logger.error(
+                        "Open-Meteo returned %d results for %d requested points; skipping mismatched batch",
+                        len(payload_list),
+                        len(batch),
+                    )
+                    continue
+                results.update(self._parse_batch(batch, payload_list))
+        finally:
+            if owns_client:
+                client.close()
+
         return results
 
 
