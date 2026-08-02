@@ -85,14 +85,7 @@ def main() -> None:
     WIDEN_FACTORS = (1, 1.5, 2, 3)
     for cell in cells:
         paintable = None
-        # Smallest-factor non-empty land intersection, kept *before* the
-        # lake subtraction -- a fallback for cells whose lake polygon
-        # (e.g. Vänern's, confirmed live to overshoot its true shoreline
-        # by more than this loop's widening ever recovers from) swallows
-        # the entire square at every factor. Using the smallest factor's
-        # shape minimizes how far this fallback overreaches versus the
-        # cell's nominal size.
-        land_only_fallback = None
+        first_land_only = None
         for factor in WIDEN_FACTORS:
             square = cell_square(cell.longitude, cell.latitude, GRID_RESOLUTION_KM * factor)
             nearby_land_idx = land_tree.query(square)
@@ -100,26 +93,39 @@ def main() -> None:
                 continue
             nearby_land = unary_union([land_parts[i] for i in nearby_land_idx])
             land_only = square.intersection(nearby_land)
+            if land_only.is_empty:
+                # No real land here yet even at this radius -- the genuine
+                # "thin coastal sliver" case widening exists for. Keep
+                # trying larger factors.
+                continue
+            first_land_only = land_only
             candidate = land_only
             if lake_tree is not None:
                 nearby_lake_idx = lake_tree.query(square)
                 if len(nearby_lake_idx) > 0:
                     nearby_lakes = unary_union([lake_parts[i] for i in nearby_lake_idx])
                     candidate = candidate.difference(nearby_lakes)
-            if land_only_fallback is None and not land_only.is_empty:
-                land_only_fallback = land_only
             if not candidate.is_empty:
                 paintable = candidate
                 if factor > 1:
                     widened += 1
-                break
-        if paintable is None and land_only_fallback is not None:
-            # Confirmed cause of a real gap: the lake mask ate 100% of
-            # this cell's land at every widen factor. Painting the raw
-            # (un-lake-clipped) land shape -- a small overlap onto the
-            # inaccurate lake edge -- beats leaving the cell fully blank
-            # on the map.
-            paintable = land_only_fallback
+            # Real land was found at this factor (whether or not the lake
+            # mask then erased all of it) -- stop widening here. Confirmed
+            # live at Malaren: continuing to widen past this point can
+            # accidentally find a non-empty but *unrelated* shoreline
+            # sliver several km away (e.g. a different island's shore
+            # picked up inside the larger search box), which then gets
+            # painted in place of this cell's own -- correct but
+            # lake-swallowed -- land, leaving this cell's real location
+            # uncoloured while a neighbour's shore is double-painted.
+            break
+        if paintable is None and first_land_only is not None:
+            # Real land here, but the lake mask (e.g. Malaren's, confirmed
+            # to have zero interior holes for its islands) erased all of
+            # it. Paint the raw, un-lake-clipped land shape -- a small
+            # overlap onto the inaccurate lake edge -- instead of leaving
+            # the cell blank.
+            paintable = first_land_only
             lake_overridden += 1
         if paintable is None:
             dropped += 1
