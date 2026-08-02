@@ -74,6 +74,7 @@ def main() -> None:
     features = []
     dropped = 0
     widened = 0
+    lake_overridden = 0
     # If the nominal ~5km square has no measurable land overlap (thin
     # coastal slivers, or a cell whose center barely qualifies as "on
     # land" per the original point-in-polygon test but whose square edges
@@ -84,23 +85,42 @@ def main() -> None:
     WIDEN_FACTORS = (1, 1.5, 2, 3)
     for cell in cells:
         paintable = None
+        # Smallest-factor non-empty land intersection, kept *before* the
+        # lake subtraction -- a fallback for cells whose lake polygon
+        # (e.g. Vänern's, confirmed live to overshoot its true shoreline
+        # by more than this loop's widening ever recovers from) swallows
+        # the entire square at every factor. Using the smallest factor's
+        # shape minimizes how far this fallback overreaches versus the
+        # cell's nominal size.
+        land_only_fallback = None
         for factor in WIDEN_FACTORS:
             square = cell_square(cell.longitude, cell.latitude, GRID_RESOLUTION_KM * factor)
             nearby_land_idx = land_tree.query(square)
             if len(nearby_land_idx) == 0:
                 continue
             nearby_land = unary_union([land_parts[i] for i in nearby_land_idx])
-            candidate = square.intersection(nearby_land)
+            land_only = square.intersection(nearby_land)
+            candidate = land_only
             if lake_tree is not None:
                 nearby_lake_idx = lake_tree.query(square)
                 if len(nearby_lake_idx) > 0:
                     nearby_lakes = unary_union([lake_parts[i] for i in nearby_lake_idx])
                     candidate = candidate.difference(nearby_lakes)
+            if land_only_fallback is None and not land_only.is_empty:
+                land_only_fallback = land_only
             if not candidate.is_empty:
                 paintable = candidate
                 if factor > 1:
                     widened += 1
                 break
+        if paintable is None and land_only_fallback is not None:
+            # Confirmed cause of a real gap: the lake mask ate 100% of
+            # this cell's land at every widen factor. Painting the raw
+            # (un-lake-clipped) land shape -- a small overlap onto the
+            # inaccurate lake edge -- beats leaving the cell fully blank
+            # on the map.
+            paintable = land_only_fallback
+            lake_overridden += 1
         if paintable is None:
             dropped += 1
             continue
@@ -110,7 +130,9 @@ def main() -> None:
         json.dump(features, fh)
     print(
         f"Wrote {len(features)} land-clipped cell polygons -> {out_path} "
-        f"({dropped} cells had no land overlap even after widening, {widened} needed widening)"
+        f"({dropped} cells had no land overlap even after widening, {widened} needed widening, "
+        f"{lake_overridden} had land fully masked by lakes even after widening and used the "
+        f"un-clipped land shape instead)"
     )
 
 
