@@ -37,28 +37,33 @@ CACHE_SERIES_FIELDS = [
     "wind_speed_10m", "wind_gusts_10m", "cloud_cover", "soil_moisture",
 ]
 
-# If the cache is fresher than this, a small incremental fetch (covering
-# the gap plus a safety margin) is enough. Anything staler -- including a
-# missing cache -- triggers a full history re-fetch instead of risking a
-# silent gap in the 21-day window the model actually depends on.
-CACHE_FRESH_THRESHOLD_HOURS = 48
+# A small incremental fetch (covering the gap plus a safety margin) is
+# enough for a cell whose cached history already reaches back the full
+# rolling window. A cell missing that -- including one a prior run never
+# reached before being killed -- needs a full history re-fetch instead of
+# risking a silent gap in the 21-day window the model actually depends on.
 INCREMENTAL_PAST_DAYS = 2
 
 
-def cache_age_hours(path: Path) -> float | None:
-    if not path.exists():
-        return None
-    return (datetime.now(timezone.utc).timestamp() - path.stat().st_mtime) / 3600.0
+def cell_needs_full_backfill(
+    cached: HourlyWeather | None, now: datetime, full_history_days: int, slack_hours: float = 6.0
+) -> bool:
+    """Whether THIS cell's cached history is missing or doesn't yet reach
+    back far enough to cover the full rolling window.
 
-
-def past_days_to_fetch(cache_path: Path, full_history_days: int) -> int:
-    """How many days of history this run needs to fetch fresh. A warm,
-    recently-updated cache only needs a small gap-filling fetch; a
-    missing or stale cache falls back to the full window."""
-    age = cache_age_hours(cache_path)
-    if age is not None and age <= CACHE_FRESH_THRESHOLD_HOURS:
-        return INCREMENTAL_PAST_DAYS
-    return full_history_days
+    Checked per cell rather than via the cache file's global mtime: a
+    checkpointed backfill that gets killed partway through (GitHub's 6h
+    job ceiling) leaves most cells with no cached history at all even
+    though the cache file itself was just written. A global freshness
+    check would see a "fresh" file and only incrementally top up every
+    cell, permanently starving the ones the killed run never reached of
+    real history. Checking per cell instead means a resumed run keeps
+    doing a full backfill for exactly the cells that still need one."""
+    if cached is None or not cached.times:
+        return True
+    cutoff = now - timedelta(days=full_history_days) + timedelta(hours=slack_hours)
+    earliest = _parse_time(min(cached.times))
+    return earliest > cutoff
 
 
 def load_history_cache(path: Path) -> dict[str, HourlyWeather]:

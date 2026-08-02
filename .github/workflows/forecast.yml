@@ -94,6 +94,34 @@ jobs:
         # has never had an env override here and has always worked
         # correctly via config.py's hardcoded default -- do the same here.
         run: |
+          # The pipeline checkpoints its weather-history cache to local disk
+          # every CACHE_CHECKPOINT_CHUNK_CELLS cells (see history_cache.py),
+          # but that alone does not survive a hard job kill: the "Commit and
+          # push" step below only runs AFTER this whole step finishes, so if
+          # GitHub's 6h ceiling kills the runner mid-fetch, everything
+          # checkpointed only to the ephemeral runner's disk is destroyed
+          # with it (confirmed: a full 6h run left nothing pushed to
+          # origin). Push the cache file periodically in the background so
+          # progress survives even if this step never returns normally.
+          (
+            while true; do
+              sleep 600
+              if [ -f data/generated/weather_history_cache.json.gz ]; then
+                git add data/generated/weather_history_cache.json.gz
+                if ! git diff --cached --quiet; then
+                  git config user.name "mosquito-risk-bot"
+                  git config user.email "actions@users.noreply.github.com"
+                  git commit -m "Checkpoint weather history cache (run in progress)"
+                  git fetch origin main
+                  git rebase origin/main || git rebase --abort
+                  git push origin HEAD:main || echo "checkpoint push failed, will retry next interval"
+                fi
+              fi
+            done
+          ) &
+          CHECKPOINT_PID=$!
+          trap 'kill "$CHECKPOINT_PID" 2>/dev/null || true' EXIT
+
           if [ "${{ inputs.sample }}" = "true" ]; then
             python scripts/run_forecast.py --sample --verbose
           else

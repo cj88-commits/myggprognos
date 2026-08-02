@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import time
 from datetime import datetime, timedelta, timezone
 
 from history_cache import (
-    INCREMENTAL_PAST_DAYS,
+    cell_needs_full_backfill,
     load_history_cache,
     merge_cached_and_fresh,
-    past_days_to_fetch,
     save_history_cache,
     split_history_for_cache,
 )
@@ -46,27 +44,28 @@ def test_save_and_load_round_trip(tmp_path):
     assert loaded["A"].temperature_2m == weather.temperature_2m
 
 
-def test_past_days_to_fetch_missing_cache_uses_full_history(tmp_path):
-    assert past_days_to_fetch(tmp_path / "missing.json.gz", full_history_days=21) == 21
+def test_cell_needs_full_backfill_when_no_cache_entry():
+    now = datetime(2026, 7, 20, tzinfo=timezone.utc)
+    assert cell_needs_full_backfill(None, now, full_history_days=21) is True
 
 
-def test_past_days_to_fetch_fresh_cache_uses_incremental(tmp_path):
-    path = tmp_path / "cache.json.gz"
-    save_history_cache(path, {"A": _weather("A", ["2026-07-01T00:00"])})
+def test_cell_needs_full_backfill_false_when_cache_covers_full_window():
+    now = datetime(2026, 7, 20, tzinfo=timezone.utc)
+    # Cached history reaches back the full 21 days -> only a small
+    # incremental top-up is needed, not a full re-fetch.
+    cached = _weather("A", ["2026-06-29T00:00", "2026-07-19T00:00"])
 
-    assert past_days_to_fetch(path, full_history_days=21) == INCREMENTAL_PAST_DAYS
+    assert cell_needs_full_backfill(cached, now, full_history_days=21) is False
 
 
-def test_past_days_to_fetch_stale_cache_uses_full_history(tmp_path):
-    path = tmp_path / "cache.json.gz"
-    save_history_cache(path, {"A": _weather("A", ["2026-07-01T00:00"])})
-    # Backdate the file's mtime well past the freshness threshold.
-    old = time.time() - 100 * 3600
-    import os
+def test_cell_needs_full_backfill_true_when_cache_does_not_reach_back_far_enough():
+    now = datetime(2026, 7, 20, tzinfo=timezone.utc)
+    # Cell was only ever incrementally topped up (e.g. a killed backfill
+    # never reached it before this) -- earliest entry is nowhere near the
+    # 21-day cutoff, so it still needs a full backfill.
+    cached = _weather("A", ["2026-07-19T00:00"])
 
-    os.utime(path, (old, old))
-
-    assert past_days_to_fetch(path, full_history_days=21) == 21
+    assert cell_needs_full_backfill(cached, now, full_history_days=21) is True
 
 
 def test_merge_cached_and_fresh_prefers_fresh_on_overlap():

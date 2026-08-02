@@ -34,9 +34,10 @@ from explanation import format_factor_strings, generate_explanation
 from feature_engineering import compute_features, precompute_rolling_windows
 from grid import GridCell, generate_sample_grid, load_grid, save_grid
 from history_cache import (
+    INCREMENTAL_PAST_DAYS,
+    cell_needs_full_backfill,
     load_history_cache,
     merge_cached_and_fresh,
-    past_days_to_fetch,
     save_history_cache,
     split_history_for_cache,
 )
@@ -162,18 +163,37 @@ def run_pipeline(
         # scratch on every 6-hourly run was the dominant driver of both
         # pipeline runtime and Open-Meteo rate-limiting).
         cached_history = load_history_cache(history_cache_path)
-        needed_past_days = past_days_to_fetch(history_cache_path, HISTORY_DAYS_BACK)
         logger.info(
-            "Weather history cache: %s -> fetching %d day(s) of history this run",
-            "warm" if needed_past_days < HISTORY_DAYS_BACK else "cold/stale (full backfill)",
-            needed_past_days,
+            "Weather history cache loaded: %d/%d cells have some cached history",
+            len(cached_history),
+            len(cells),
         )
 
         weather_by_cell = {}
         new_cache: dict[str, HourlyWeather] = {}
         for chunk_start in range(0, len(cells), CACHE_CHECKPOINT_CHUNK_CELLS):
             chunk = cells[chunk_start : chunk_start + CACHE_CHECKPOINT_CHUNK_CELLS]
-            fresh_by_cell = provider.fetch_combined(chunk, needed_past_days, FORECAST_DAYS)
+
+            # Decide per cell, not once for the whole run: a cell with no
+            # cached history yet (e.g. a prior backfill was killed before
+            # reaching it) needs the full HISTORY_DAYS_BACK window; a cell
+            # whose cache already covers that window only needs a small
+            # incremental top-up. See cell_needs_full_backfill's docstring
+            # for why a single global "is the cache fresh" check is wrong
+            # here.
+            full_backfill_cells = [
+                c for c in chunk
+                if cell_needs_full_backfill(cached_history.get(c.cell_id), run_time, HISTORY_DAYS_BACK)
+            ]
+            full_backfill_ids = {c.cell_id for c in full_backfill_cells}
+            incremental_cells = [c for c in chunk if c.cell_id not in full_backfill_ids]
+
+            fresh_by_cell: dict[str, HourlyWeather] = {}
+            if full_backfill_cells:
+                fresh_by_cell.update(provider.fetch_combined(full_backfill_cells, HISTORY_DAYS_BACK, FORECAST_DAYS))
+            if incremental_cells:
+                fresh_by_cell.update(provider.fetch_combined(incremental_cells, INCREMENTAL_PAST_DAYS, FORECAST_DAYS))
+
             for cell in chunk:
                 fresh = fresh_by_cell.get(cell.cell_id)
                 if fresh is None:
@@ -186,9 +206,11 @@ def run_pipeline(
             # -- see CACHE_CHECKPOINT_CHUNK_CELLS above.
             save_history_cache(history_cache_path, new_cache)
             logger.info(
-                "Weather history cache checkpointed: %d/%d cells done",
+                "Weather history cache checkpointed: %d/%d cells done (%d full backfill, %d incremental this chunk)",
                 len(new_cache),
                 len(cells),
+                len(full_backfill_cells),
+                len(incremental_cells),
             )
 
     for cell in cells:
