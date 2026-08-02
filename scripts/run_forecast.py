@@ -2,12 +2,10 @@
 """Run the forecast pipeline and write generated output assets.
 
 Usage:
-    python scripts/run_forecast.py --sample          # fast, no network, 5 cells
-    python scripts/run_forecast.py                   # full grid, live Open-Meteo data
-    python scripts/run_forecast.py --provider smhi   # full grid, live SMHI data (parallel
-                                                       # evaluation -- writes to a separate
-                                                       # output_dir/cache, never touches the
-                                                       # production Open-Meteo-driven output)
+    python scripts/run_forecast.py --sample                  # fast, no network, 5 cells
+    python scripts/run_forecast.py                           # full grid, live SMHI data (default)
+    python scripts/run_forecast.py --provider open-meteo     # full grid, live Open-Meteo data
+                                                               # (kept as a fallback -- see README)
 """
 from __future__ import annotations
 
@@ -16,7 +14,6 @@ import logging
 import sys
 
 import _pathsetup  # noqa: F401
-from config import GENERATED_DATA_DIR
 from pipeline import run_pipeline
 
 
@@ -24,9 +21,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sample", action="store_true", help="Use the small sample grid + synthetic weather")
     parser.add_argument(
-        "--provider", choices=["open-meteo", "smhi"], default="open-meteo",
-        help="Weather data source. 'smhi' is under parallel evaluation (see README) and "
-             "always writes to a separate output_dir/history cache, regardless of --sample.",
+        "--provider", choices=["smhi", "open-meteo"], default="smhi",
+        help="Weather data source for the real (non-sample) grid. SMHI is the default "
+             "production source (see README); open-meteo is kept as a fallback.",
     )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
@@ -48,29 +45,30 @@ def main() -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
 
+    # --sample always uses the fast, offline SyntheticWeatherProvider
+    # (run_pipeline's own default for sample=True) -- --provider only
+    # selects between real network sources for the real grid.
     weather_provider = None
-    output_dir = None
-    history_cache_path = None
     cache_checkpoint_chunk_cells = None
-    if args.provider == "smhi":
+    if not args.sample and args.provider == "smhi":
         from smhi_weather import SMHIProvider
 
         weather_provider = SMHIProvider()
-        output_dir = GENERATED_DATA_DIR / "latest_smhi"
-        history_cache_path = GENERATED_DATA_DIR / "weather_history_cache_smhi.json.gz"
         # SMHIProvider's request cost is independent of how many cells are
         # asked for (unlike Open-Meteo's per-cell batching) -- chunking
         # into groups of 1000 like the Open-Meteo default would repeat its
         # whole-domain fetch ~19x for nothing (confirmed live). One big
         # chunk covering the whole grid instead.
         cache_checkpoint_chunk_cells = 100_000
+    elif not args.sample and args.provider == "open-meteo":
+        from weather import OpenMeteoProvider
+
+        weather_provider = OpenMeteoProvider()
 
     try:
         result = run_pipeline(
             sample=args.sample,
             weather_provider=weather_provider,
-            output_dir=output_dir,
-            history_cache_path=history_cache_path,
             cache_checkpoint_chunk_cells=cache_checkpoint_chunk_cells,
         )
     except Exception:

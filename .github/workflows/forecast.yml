@@ -27,17 +27,15 @@ jobs:
     runs-on: ubuntu-latest
     # NOTE: 360 minutes (6 hours) is a hard ceiling for GitHub-hosted
     # runners that timeout-minutes cannot raise (tried 480 here first --
-    # the job was still killed at exactly 6h, confirming this). A
-    # full-Sweden run hit that ceiling once the weather fetch started
-    # actually succeeding (see the OPEN_METEO_BASE_URL fix; before that,
-    # every forecast batch failed near-instantly, which perversely kept
-    # total runtime under 6h). The real fix is keeping the pipeline
-    # reliably well under 6h: see weather.py's fetch_combined (one
-    # request per batch instead of two) and its persistent shared
-    # httpx.Client (a fresh TCP+TLS handshake per one of ~370 batches was
-    # both slow and a major source of the timeouts that were driving
-    # retries). Left at the platform max explicitly so it's clear this
-    # isn't an oversight.
+    # the job was still killed at exactly 6h, confirming this). This
+    # historically mattered a lot for Open-Meteo, whose per-cell-batch
+    # request design scales with grid size and hit severe rate limiting
+    # at full-Sweden scale (see weather.py / history_cache.py). SMHI (the
+    # default provider as of this migration -- see README) has no such
+    # scaling problem and typically finishes the whole grid in ~15-20
+    # minutes; this generous ceiling is kept mainly as a safety margin and
+    # for the retained open-meteo fallback path (--provider open-meteo),
+    # not because SMHI runs are expected to need it.
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
@@ -75,6 +73,20 @@ jobs:
       - name: Prepare static features (cache miss only)
         if: steps.static-cache.outputs.cache-hit != 'true'
         run: python scripts/prepare_static_features.py
+
+      # SMHI is the default weather provider (see README) -- its
+      # nearest-neighbor grid index only needs rebuilding when our own
+      # grid changes, same reasoning as the static-grid cache above.
+      - name: Cache SMHI grid index
+        id: smhi-index-cache
+        uses: actions/cache@v4
+        with:
+          path: data/static/smhi_grid_index.json
+          key: smhi-grid-index-v1-${{ hashFiles('data/static/grid.json') }}
+
+      - name: Prepare SMHI grid index (cache miss only)
+        if: steps.smhi-index-cache.outputs.cache-hit != 'true'
+        run: python scripts/prepare_smhi_grid_index.py
 
       - name: Run forecast pipeline
         id: run
