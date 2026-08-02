@@ -35,6 +35,18 @@ def main() -> None:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    # --verbose is meant to control OUR application-level logging
+    # (mosquito_forecast.*), not httpx/httpcore's own wire-protocol
+    # tracing -- at DEBUG that library logs ~10 lines per single HTTP
+    # request, and a full SMHI or Open-Meteo run makes hundreds of
+    # requests. Suspected (not fully confirmed) cause of two live SMHI
+    # comparison runs getting silently cancelled ("The operation was
+    # canceled.") partway through, well before any timeout-minutes was
+    # reached and with no other explanation found -- GitHub Actions log
+    # volume is a plausible trigger. Silencing it is a good idea
+    # regardless: it's noise, not information we act on.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
 
     weather_provider = None
     output_dir = None
