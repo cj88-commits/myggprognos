@@ -82,6 +82,18 @@ def main() -> None:
     # than dropping the cell outright -- every cell that made it into the
     # grid in the first place has a real, confirmed-on-land point, so it
     # should always be paintable with *some* shape.
+    # A cell whose lake-clipped candidate keeps less than this fraction of
+    # its un-clipped land area is treated as lake overshoot (see below)
+    # rather than a genuine "mostly lake, small real shoreline" cell.
+    # Confirmed live: sampling 3000 cells nationally, ~2.9% had a square
+    # that was >=90% real land (per the accurate boundary source) get
+    # clipped to under half that by a lake polygon -- extrapolates to
+    # 500+ cells, consistent with the "hundreds of white coastline
+    # patches" reported live, concentrated around Malaren/Vanern (whose
+    # lake polygons are already confirmed, via the zero-interior-holes
+    # finding above, to be an imprecise/low-resolution source that
+    # doesn't reliably track the true shoreline).
+    LAKE_OVERSHOOT_FRACTION = 0.5
     WIDEN_FACTORS = (1, 1.5, 2, 3)
     for cell in cells:
         paintable = None
@@ -105,26 +117,28 @@ def main() -> None:
                 if len(nearby_lake_idx) > 0:
                     nearby_lakes = unary_union([lake_parts[i] for i in nearby_lake_idx])
                     candidate = candidate.difference(nearby_lakes)
-            if not candidate.is_empty:
+            if not candidate.is_empty and candidate.area >= land_only.area * LAKE_OVERSHOOT_FRACTION:
                 paintable = candidate
                 if factor > 1:
                     widened += 1
-            # Real land was found at this factor (whether or not the lake
-            # mask then erased all of it) -- stop widening here. Confirmed
-            # live at Malaren: continuing to widen past this point can
-            # accidentally find a non-empty but *unrelated* shoreline
-            # sliver several km away (e.g. a different island's shore
-            # picked up inside the larger search box), which then gets
-            # painted in place of this cell's own -- correct but
-            # lake-swallowed -- land, leaving this cell's real location
-            # uncoloured while a neighbour's shore is double-painted.
+            # Real land was found at this factor (whether the lake mask
+            # then erased all, most, or none of it) -- stop widening
+            # here. Confirmed live at Malaren: continuing to widen past
+            # this point can accidentally find a non-empty but
+            # *unrelated* shoreline sliver several km away (e.g. a
+            # different island's shore picked up inside the larger
+            # search box), which then gets painted in place of this
+            # cell's own -- correct but lake-swallowed -- land, leaving
+            # this cell's real location uncoloured while a neighbour's
+            # shore is double-painted.
             break
         if paintable is None and first_land_only is not None:
-            # Real land here, but the lake mask (e.g. Malaren's, confirmed
-            # to have zero interior holes for its islands) erased all of
-            # it. Paint the raw, un-lake-clipped land shape -- a small
-            # overlap onto the inaccurate lake edge -- instead of leaving
-            # the cell blank.
+            # Real land here, but the lake mask (e.g. Malaren's/Vanern's,
+            # both confirmed to have zero interior holes for their
+            # islands) erased all or most of it. Paint the raw,
+            # un-lake-clipped land shape -- a small overlap onto the
+            # inaccurate lake edge -- instead of leaving the cell blank
+            # or barely-painted.
             paintable = first_land_only
             lake_overridden += 1
         if paintable is None:

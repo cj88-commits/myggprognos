@@ -140,25 +140,39 @@ def _supplementary_island_cells(
     """Add extra cells wherever real land (per `boundary`) sits too far
     from every existing point to ever be reached by that point's own
     ~resolution_km square -- not just entirely-disconnected islands, but
-    also real coastline within a much larger connected "part" that the
-    old per-part check saw as already "covered" (some existing lattice
-    point lies *somewhere* in that huge part) while still leaving real
-    land uncovered in the gaps between individual lattice points'
-    squares. Confirmed live in the Stockholm archipelago: ~15% of real
-    land within a few km of sampled coastal points had zero cell
-    covering it, purely because the fixed-phase lattice's points didn't
-    happen to land on those specific skerries, even though the
-    surrounding "part" already had cells elsewhere.
+    also real coastline within a much larger connected "part" (e.g. the
+    mainland, or Gotland) that the old per-part check saw as already
+    "covered" (some existing lattice point lies *somewhere* in that huge
+    part) while still leaving real coastal land uncovered in the gaps
+    between individual lattice points' squares -- confirmed live: a
+    fixed-phase 5km lattice regularly leaves a cell's *nearest* point
+    barely 1-7km away while still uncovered, wherever the true coastline
+    is complex enough (bays, inlets, narrow peninsulas) that individual
+    squares only catch slivers of it. This affects the mainland's own
+    coast and Gotland just as much as it affects the outer archipelago
+    (which a first version of this function fixed, but only for
+    genuinely disconnected small islands).
 
-    Tiles each boundary part with the same `resolution_km` spacing as
-    the main lattice, offset to the part's own bounding box (reusing the
-    main lattice's phase would just rediscover the exact points it
-    already tried and missed -- that's why the part was uncovered in the
-    first place). Adds a point for every candidate that lands on real
-    land and is farther than `resolution_km * GAP_FILL_FACTOR` from every
-    already-placed point (main lattice + supplementary points added so
-    far this run), so density stays proportional to the main grid
-    instead of clustering points arbitrarily close together.
+    Probing every part's *entire* bounding box at fine resolution works
+    for a small island but is far too much for the mainland (bounding
+    box ~ all of Sweden). Instead this only probes a coastal fringe --
+    `part` minus an inward erosion of it -- since interior points well
+    away from any true edge are already covered by the regular lattice;
+    for a part smaller than the fringe width (e.g. most individual
+    islands) the erosion is empty and the whole part is probed, same as
+    before.
+
+    Within that fringe, tiles at the same `resolution_km` spacing as the
+    main lattice would reproduce the exact bug this function exists to
+    fix: confirmed live, a 14x13km archipelago "part" (an irregular,
+    branching cluster of real skerries -- most of its own bounding box
+    is open water) only produced a 3x3 = 9 candidate grid at that
+    spacing, of which just 2 happened to land on real land. Probing at a
+    *finer* resolution instead finds the true (irregular, branching)
+    shape; `threshold_km` below still keeps final point density
+    comparable to the main grid by only keeping a candidate when the
+    nearest already-placed point (main lattice + supplementary points
+    added so far) is farther away than that.
     """
     try:
         from shapely.geometry import Point
@@ -182,33 +196,41 @@ def _supplementary_island_cells(
     GAP_FILL_FACTOR = 0.75
     threshold_km = resolution_km * GAP_FILL_FACTOR
 
-    # Candidates are tested at a *finer* resolution than they're placed
-    # at. Using resolution_km-spaced candidates (one lattice phase per
-    # part, same as the main lattice) reproduces the exact bug this
-    # function exists to fix: confirmed live, a 14x13km archipelago
-    # "part" (an irregular, branching cluster of real skerries -- most
-    # of its own bounding box is open water) only produced a 3x3 = 9
-    # candidate grid, of which just 2 happened to land on real land,
-    # leaving most of the part's actual coastline more than 5km from any
-    # cell. A finer probe finds the true (irregular, branching) shape of
-    # each part; `threshold_km` below still keeps final point density
-    # comparable to the main grid.
+    # How far inward from a part's true edge to probe. Must comfortably
+    # exceed threshold_km (points deeper inside than that are always
+    # already "covered" by definition) with margin for the fact that the
+    # nearest existing lattice point to a given spot on the coast isn't
+    # necessarily the inland one geometrically closest to the true edge.
+    COASTAL_FRINGE_KM = 15.0
+
     PROBE_KM = resolution_km / 3
+    fringe_deg = COASTAL_FRINGE_KM / KM_PER_DEGREE_LAT
 
-    mid_lat = (SWEDEN_BBOX["min_lat"] + SWEDEN_BBOX["max_lat"]) / 2
-    lon_scale = math.cos(math.radians(mid_lat))
+    # Kept RAW (unscaled) here -- a single longitude-scale factor for the
+    # *whole* placed array would need to pick one fixed reference
+    # latitude for all of Sweden (55.3-69.1 deg N), which is exactly the
+    # bug this replaced: using SWEDEN_BBOX's overall midpoint (~62 deg N)
+    # systematically under-measured true distances in the south and
+    # over-measured them in the north (cos(57 deg) is ~16% bigger than
+    # cos(62 deg)). Confirmed live: this alone silently sank a real
+    # ~4.3km gap on Gotland (57 deg N) to a computed ~3.7km -- just
+    # under GAP_FILL_FACTOR's threshold, so no cell ever got added
+    # there. min_dist_km below instead takes the *local* scale for
+    # whichever part is currently being probed.
+    placed = np.array([[c.longitude, c.latitude] for c in cells], dtype=np.float64)
 
-    placed = np.array([[c.longitude * lon_scale, c.latitude] for c in cells], dtype=np.float64)
-
-    def min_dist_km(lon: float, lat: float) -> float:
-        dlon = (placed[:, 0] - lon * lon_scale) * KM_PER_DEGREE_LAT
+    def min_dist_km(lon: float, lat: float, lon_scale: float) -> float:
+        dlon = (placed[:, 0] - lon) * lon_scale * KM_PER_DEGREE_LAT
         dlat = (placed[:, 1] - lat) * KM_PER_DEGREE_LAT
         return float(np.sqrt((dlon * dlon + dlat * dlat).min()))
 
     extra: list[GridCell] = []
     for i, part in enumerate(parts):
-        part_minx, part_miny, part_maxx, part_maxy = part.bounds
+        interior = part.buffer(-fringe_deg)
+        fringe = part.difference(interior) if not interior.is_empty else part
+        part_minx, part_miny, part_maxx, part_maxy = fringe.bounds
         part_mid_lat = (part_miny + part_maxy) / 2
+        part_lon_scale = math.cos(math.radians(part_mid_lat))
         lat_step = PROBE_KM / KM_PER_DEGREE_LAT
         lon_step = PROBE_KM / _km_per_degree_lon(part_mid_lat)
 
@@ -217,7 +239,7 @@ def _supplementary_island_cells(
         while lat <= part_maxy:
             lon = part_minx
             while lon <= part_maxx:
-                if part.contains(Point(lon, lat)) and min_dist_km(lon, lat) > threshold_km:
+                if fringe.contains(Point(lon, lat)) and min_dist_km(lon, lat, part_lon_scale) > threshold_km:
                     extra.append(
                         GridCell(
                             cell_id=f"SE_ISLE_{i:04d}_{part_added:03d}",
@@ -227,7 +249,7 @@ def _supplementary_island_cells(
                         )
                     )
                     part_added += 1
-                    placed = np.vstack([placed, [[lon * lon_scale, lat]]])
+                    placed = np.vstack([placed, [[lon, lat]]])
                     if max_cells is not None and len(cells) + len(extra) >= max_cells:
                         return extra
                 lon += lon_step
@@ -241,7 +263,7 @@ def _supplementary_island_cells(
             # which can fall outside for concave/crescent shapes) so it
             # still gets *some* cell rather than none.
             rep = part.representative_point()
-            if min_dist_km(rep.x, rep.y) > threshold_km:
+            if min_dist_km(rep.x, rep.y, part_lon_scale) > threshold_km:
                 extra.append(
                     GridCell(
                         cell_id=f"SE_ISLE_{i:04d}_000",
@@ -250,7 +272,7 @@ def _supplementary_island_cells(
                         region=_approx_region(rep.y),
                     )
                 )
-                placed = np.vstack([placed, [[rep.x * lon_scale, rep.y]]])
+                placed = np.vstack([placed, [[rep.x, rep.y]]])
                 if max_cells is not None and len(cells) + len(extra) >= max_cells:
                     return extra
 
