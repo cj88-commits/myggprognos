@@ -124,14 +124,10 @@ a {
     top: 0.5rem;
     left: 0.5rem;
     right: 0.5rem;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 0.15rem;
   }
   .control-group-search {
     flex: 1 1 auto;
-    min-width: 160px;
+    min-width: 0;
   }
   .search-box {
     min-width: 0;
@@ -162,6 +158,121 @@ a {
 
 .control-bar > * {
   pointer-events: auto;
+}
+
+/* Mobile-only "Filters" button that opens .filters-panel as a bottom
+   sheet (see the @media (max-width: 860px) block below) -- hidden on
+   desktop, where .filters-panel is already inline (display: contents). */
+.filters-toggle {
+  display: none;
+  align-items: baseline;
+  gap: 0.4rem;
+  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.35rem 0.65rem;
+  min-height: 44px;
+  color: var(--color-text);
+  font-size: 0.85rem;
+  backdrop-filter: blur(4px);
+}
+
+.filters-toggle-label {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.filters-toggle-summary {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40vw;
+}
+
+/* display: contents on desktop makes this wrapper invisible to layout --
+   its .control-group children become direct flex items of .control-bar,
+   exactly as if this div weren't there, so desktop's inline layout is
+   unchanged. The mobile media query above replaces this with a real
+   (sheet) box once .open is toggled. */
+.filters-panel {
+  display: contents;
+}
+
+.filters-panel-header {
+  display: none;
+}
+
+.filters-backdrop {
+  display: none;
+}
+
+/* This must come AFTER the unconditional filters-* defaults above --
+   equal-specificity selectors resolve by source order, and the previous
+   version of this file had the mobile override for .control-bar defined
+   BEFORE its unconditional counterpart, so the later, always-on rule
+   silently won and the mobile-only behavior never actually applied
+   (confirmed live -- see the "Fix mobile control bar" commit). Keeping
+   every mobile filters-* override in one block placed after its
+   defaults avoids reintroducing that bug here. */
+@media (max-width: 860px) {
+  .filters-toggle {
+    display: flex;
+  }
+  .filters-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .filters-panel-title {
+    font-weight: 600;
+  }
+  .filters-panel {
+    display: none;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    flex-direction: column;
+    gap: 0.6rem;
+    max-height: 70vh;
+    overflow-y: auto;
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+    border-radius: 16px 16px 0 0;
+    padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.3);
+    z-index: 50;
+  }
+  .filters-panel.open {
+    display: flex;
+  }
+  .filters-panel .control-group {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .filters-panel select {
+    flex: 1 1 auto;
+  }
+  .filters-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 40;
+  }
+  /* .legend is position: absolute against .map-area, not position: fixed
+     against the viewport like .filters-panel -- confirmed live, its
+     z-index (10, lower than the panel's 50) doesn't reliably keep it out
+     from under the open sheet since they're compared in different
+     stacking contexts. Simplest fix: just hide it while the sheet's up,
+     rather than fighting stacking-context math for a box that has
+     nothing to show while filters are open anyway. */
+  .map-area:has(.filters-panel.open) .legend {
+    display: none;
+  }
 }
 
 .control-group {

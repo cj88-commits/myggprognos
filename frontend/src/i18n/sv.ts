@@ -19,6 +19,8 @@ const sv = {
   "controlBar.layer": "Lager",
   "controlBar.useMyLocation": "Använd min plats",
   "controlBar.playPause": "Spela upp/pausa timanimering",
+  "controlBar.filters": "Filter",
+  "controlBar.closeFilters": "Stäng filter",
 
   "daypart.morning": "Morgon",
   "daypart.afternoon": "Eftermiddag",
