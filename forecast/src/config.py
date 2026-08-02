@@ -65,6 +65,24 @@ WEATHER_CACHE_DIR = Path(
     os.environ.get("WEATHER_CACHE_DIR", str(DATA_DIR / "cache" / "weather"))
 )
 
+# SMHI Open Data (see forecast/src/smhi_weather.py) -- evaluated in parallel
+# with Open-Meteo, not yet the default. Both the SNOW forecast model and the
+# MESAN analysis product share the exact same ~1M-point grid (confirmed live
+# against the API), so a single precomputed nearest-neighbor index covers
+# both.
+SMHI_FORECAST_BASE_URL = os.environ.get(
+    "SMHI_FORECAST_BASE_URL",
+    "https://opendata-download-metfcst.smhi.se/api/category/snow1g/version/1",
+)
+SMHI_ANALYSIS_BASE_URL = os.environ.get(
+    "SMHI_ANALYSIS_BASE_URL",
+    "https://opendata-download-metanalys.smhi.se/api/category/mesan2g/version/3",
+)
+SMHI_GRID_INDEX_PATH = STATIC_DATA_DIR / "smhi_grid_index.json"
+SMHI_REQUEST_TIMEOUT_S = float(os.environ.get("SMHI_REQUEST_TIMEOUT_S", "30"))
+SMHI_MAX_RETRIES = int(os.environ.get("SMHI_MAX_RETRIES", "4"))
+SMHI_BACKOFF_BASE_S = float(os.environ.get("SMHI_BACKOFF_BASE_S", "1.0"))
+
 # Risk is a 0-100 score (see forecast/src/model.py). Labels are emitted as
 # Swedish content data directly from the pipeline (not frontend UI chrome),
 # so no frontend i18n lookup is needed to display them.

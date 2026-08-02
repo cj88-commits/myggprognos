@@ -415,6 +415,48 @@ per-locale explanation arrays — a natural follow-up, not implemented here.
   wrapping awkwardly, and the legend is a native `<details>` disclosure so it can be collapsed on small
   screens.
 
+## SMHI weather data: parallel evaluation
+
+Open-Meteo (the default/production weather source) hit a hard scaling wall at full-Sweden scale: its
+per-cell-batch request design means total request count scales with grid size (~373 batches for our
+~18.6k cells), and a live full-history backfill got rate-limited into the ground — 705 HTTP 429s in one
+6-hour run, with throughput collapsing to near-zero after the first ~30 minutes. That prompted evaluating
+[SMHI Open Data](https://opendata.smhi.se/) (the Swedish met service's own free, open API) as an
+alternative, implemented in `forecast/src/smhi_weather.py` and running in **parallel** with Open-Meteo, not
+yet the default.
+
+**Why it's structurally different (and better) for our request-volume problem**: SMHI's MultiPoint endpoint
+returns one value per grid point across its *entire* ~1,014,481-point domain (all of Scandinavia and
+beyond) for a single `(time, parameter)` pair, in one request — confirmed live. So instead of looping over
+batches of our own cells, `SMHIProvider` loops over the `(time, parameter)` pairs it needs (one whole-domain
+fetch each) and picks out our cells' values via a precomputed nearest-neighbor index
+(`scripts/prepare_smhi_grid_index.py`, run once, cached to `data/static/smhi_grid_index.json`). Total
+request count is therefore **independent of grid size**: a live smoke test against the full grid took ~440
+requests regardless of whether 6 cells or 18,649 were requested, completing in low single-digit minutes with
+zero rate-limiting observed.
+
+**Two permanent, known limitations versus Open-Meteo** (not bugs — structural, confirmed against the live
+API):
+- **No soil moisture parameter** on either SMHI product (forecast `snow1g` or analysis `mesan2g`). Left as
+  `None` throughout, same fallback path `HourlyWeather` already supports for missing fields.
+- **No bulk historical backfill.** SMHI's MESAN analysis API only exposes a rolling ~24h window
+  (`times.json` never lists more than a day of history) — there's no "give me the last 21 days" call. A
+  fresh switch to SMHI would need to accumulate the full 21-day rolling window gradually over ~3 weeks of
+  daily runs (the same self-healing bootstrap `history_cache.py` already implements for a cold cache), not
+  get it in one backfill the way Open-Meteo's `past_days` parameter allows.
+
+SMHI's own forecast time steps also coarsen with lead time (1h out to 48h, 2h to 72h, 6h to 132h, 12h
+beyond) rather than staying hourly. Since `feature_engineering.py`'s rolling-window precompute assumes a
+uniformly hourly series (each array index = 1 hour), `SMHIProvider` forward-fills onto a synthetic hourly
+grid before returning, keeping its output contract identical to `OpenMeteoProvider`'s.
+
+**Running the comparison**: `python scripts/run_forecast.py --provider smhi` (or the `SMHI Provider
+Comparison` GitHub Actions workflow, `workflow_dispatch` only, no schedule) writes to
+`data/generated/latest_smhi` and `data/generated/weather_history_cache_smhi.json.gz` — separate from the
+production Open-Meteo output and cache, never touching `data/generated/latest` and never triggering a Pages
+deployment. The two can be diffed once both have run for a few days, before any decision to actually switch
+the default provider.
+
 ## Testing
 
 - `cd forecast && pytest -v` — unit tests for every scoring sub-function (incl. the standing-water term),
