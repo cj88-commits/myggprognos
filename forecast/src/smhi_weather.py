@@ -219,22 +219,43 @@ class SMHIProvider:
         # time, but tests need it pinned for reproducibility.
         self._now = now
 
-    def _fetch_domain(
-        self, client: httpx.Client, base_url: str, times: list[str], parameters: dict[str, str]
-    ) -> dict[str, dict[str, list[float | None]]]:
-        """Returns {internal_field: {time_str: whole-domain value array}}."""
-        out: dict[str, dict[str, list[float | None]]] = {field: {} for field in parameters}
+    def _fill_matrices(
+        self,
+        client: httpx.Client,
+        base_url: str,
+        times: list[str],
+        parameters: dict[str, str],
+        field_matrices: dict[str, np.ndarray],
+        row_offset: int,
+        idx_array: np.ndarray,
+        valid_mask: np.ndarray,
+    ) -> None:
+        """Fetch each (field, time) whole-domain array and immediately
+        extract just OUR cells' values into field_matrices, in place.
+
+        Critically, each whole-domain array (~1M elements, a Python list
+        straight off response.json()) is a local variable here, discarded
+        the moment the next iteration reassigns it. The earlier version
+        collected ALL of them into a dict before extracting anything --
+        for a full-grid run (~600 (field, time) combos) that meant
+        holding ~600 such lists simultaneously, tens of GB as boxed
+        Python floats, which OOM-killed a live run (confirmed: the
+        process was killed with exit code 143 / SIGTERM) even though the
+        final per-cell matrices are only a few hundred MB total."""
         total = len(times) * len(parameters)
         done = 0
         for field, smhi_param in parameters.items():
-            for t in times:
+            lo, hi = PLAUSIBLE_RANGES[field]
+            matrix = field_matrices[field]
+            for row_i, t in enumerate(times):
                 done += 1
                 if done == 1 or done % 20 == 0 or done == total:
                     logger.info("SMHI fetch progress: %d/%d (%s)", done, total, base_url.rsplit("/", 4)[-4])
-                values = _fetch_multipoint_values(client, base_url, t, smhi_param, self.max_retries, self.backoff_base_s)
-                if values is not None:
-                    out[field][t] = values
-        return out
+                domain_values = _fetch_multipoint_values(client, base_url, t, smhi_param, self.max_retries, self.backoff_base_s)
+                if domain_values is None:
+                    continue
+                picked = np.asarray(domain_values, dtype=np.float64)[idx_array]
+                matrix[row_offset + row_i] = np.where(valid_mask & (picked >= lo) & (picked <= hi), picked, np.nan)
 
     def fetch_combined(
         self, points: Iterable[GridCell], past_days: int, forecast_days: int
@@ -249,6 +270,10 @@ class SMHIProvider:
                 len(missing), len(points), missing[:5], "..." if len(missing) > 5 else "",
             )
 
+        idx_array = np.array([i if i is not None else 0 for i in indices], dtype=np.int64)
+        valid_mask = np.array([i is not None for i in indices], dtype=bool)
+        fields = list(FORECAST_PARAMETERS.keys())
+
         owns_client = self._client is None
         client = self._client or httpx.Client(timeout=self.timeout_s)
         try:
@@ -259,43 +284,28 @@ class SMHIProvider:
             forecast_cutoff = now + timedelta(days=forecast_days)
             forecast_times = [t for t in forecast_times if datetime.fromisoformat(t) <= forecast_cutoff]
 
-            analysis_data = self._fetch_domain(client, self.analysis_base_url, analysis_times, ANALYSIS_PARAMETERS)
-            forecast_data = self._fetch_domain(client, self.forecast_base_url, forecast_times, FORECAST_PARAMETERS)
+            # Raw (irregularly spaced) merged series, per field: analysis
+            # times (real observed past) followed by forecast times
+            # (future) -- overlap is not expected (analysis is always
+            # <= now, forecast is always > now) so no de-dup/merge logic
+            # is needed here.
+            raw_times_str = analysis_times + forecast_times
+            field_matrices: dict[str, np.ndarray] = {
+                field: np.full((len(raw_times_str), len(points)), np.nan, dtype=np.float64) for field in fields
+            }
+            self._fill_matrices(
+                client, self.analysis_base_url, analysis_times, ANALYSIS_PARAMETERS,
+                field_matrices, 0, idx_array, valid_mask,
+            )
+            self._fill_matrices(
+                client, self.forecast_base_url, forecast_times, FORECAST_PARAMETERS,
+                field_matrices, len(analysis_times), idx_array, valid_mask,
+            )
         finally:
             if owns_client:
                 client.close()
 
-        # Raw (irregularly spaced) merged series, per field: analysis times
-        # (real observed past) followed by forecast times (future), in
-        # order -- overlap is not expected (analysis is always <= now,
-        # forecast is always > now) so no de-dup/merge logic is needed here.
-        raw_times_str = analysis_times + forecast_times
         raw_times = [datetime.fromisoformat(t) for t in raw_times_str]
-
-        fields = list(FORECAST_PARAMETERS.keys())
-
-        # Look up each field's domain-wide array ONCE per (field, time) pair
-        # and vectorize the per-cell extraction with numpy, instead of once
-        # per (cell, field, time) triple. At full-Sweden scale (~18.6k
-        # cells) the naive version repeated the SAME domain-wide dict
-        # lookup + range check independently for every cell -- ~65M
-        # redundant Python-level operations that dominated wall-clock time
-        # far more than the network fetch itself (confirmed live: a
-        # full-grid comparison run was still running after 45+ minutes on
-        # this step alone, versus ~5-9 minutes for the fetch).
-        idx_array = np.array([i if i is not None else 0 for i in indices], dtype=np.int64)
-        valid_mask = np.array([i is not None for i in indices], dtype=bool)
-        field_matrices: dict[str, np.ndarray] = {}
-        for field in fields:
-            lo, hi = PLAUSIBLE_RANGES[field]
-            matrix = np.full((len(raw_times_str), len(points)), np.nan, dtype=np.float64)
-            for row_i, t in enumerate(raw_times_str):
-                domain_values = analysis_data.get(field, {}).get(t) or forecast_data.get(field, {}).get(t)
-                if domain_values is None:
-                    continue
-                picked = np.asarray(domain_values, dtype=np.float64)[idx_array]
-                matrix[row_i] = np.where(valid_mask & (picked >= lo) & (picked <= hi), picked, np.nan)
-            field_matrices[field] = matrix
 
         # Build the target uniform hourly grid spanning the full requested
         # window, same shape OpenMeteoProvider would produce.
