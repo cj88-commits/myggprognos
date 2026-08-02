@@ -85,17 +85,8 @@ a {
 }
 
 .app-title {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
   font-weight: 700;
   font-size: 1.1rem;
-}
-
-.app-title .subtitle {
-  font-weight: 400;
-  font-size: 0.8rem;
-  color: var(--color-text-muted);
 }
 
 .map-area {

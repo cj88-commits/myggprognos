@@ -215,12 +215,15 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <div className="app-title">
-          {t("app.title")} <span className="subtitle">{t("app.subtitle")}</span>
-        </div>
+        <div className="app-title">{t("app.title")}</div>
         {manifest && (
           <div style={{ fontSize: "0.72rem", color: "var(--color-text-muted)" }}>
-            {t("app.updated", { date: new Date(manifest.generated_at).toLocaleString(locale === "sv" ? "sv-SE" : undefined) })}
+            {t("app.updated", {
+              date: new Date(manifest.generated_at).toLocaleTimeString(locale === "sv" ? "sv-SE" : undefined, {
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+            })}
           </div>
         )}
       </header>

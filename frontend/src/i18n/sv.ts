@@ -7,7 +7,6 @@
 // data, not UI chrome.
 const sv = {
   "app.title": "Myggprognos",
-  "app.subtitle": "Sverige · experimentell prognos, inte en myggräkning",
   "app.updated": "Uppdaterad {date}",
 
   "controlBar.day": "Dag",

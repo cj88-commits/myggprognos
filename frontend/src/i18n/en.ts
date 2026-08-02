@@ -6,7 +6,6 @@ import type { I18nDict } from "./types";
 // here falls back to the Swedish string (see index.tsx's `t()`).
 const en: Partial<I18nDict> = {
   "app.title": "Mosquito Forecast",
-  "app.subtitle": "Sweden · experimental forecast, not a mosquito count",
   "app.updated": "Updated {date}",
 
   "controlBar.day": "Day",
