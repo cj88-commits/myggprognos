@@ -72,6 +72,17 @@ HISTORY_DAYS_BACK = 21
 # at the very end) means a mid-flight kill still leaves every
 # already-processed chunk cached, so the next attempt only has to redo
 # what's left instead of starting completely over.
+#
+# This default assumes a provider whose request cost scales with the
+# number of cells in a batch (true for OpenMeteoProvider). SMHIProvider is
+# the opposite: each fetch_combined call re-fetches a whole-domain
+# times.json plus every needed (time, parameter) array regardless of how
+# many cells were asked for, so calling it once per 1000-cell chunk
+# repeats that whole-domain cost ~19x for the full grid instead of paying
+# it once -- confirmed live (a full-grid run using the 1000-cell default
+# was still going after 42 minutes of real progress, on pace to take far
+# longer). run_forecast.py passes a much larger cache_checkpoint_chunk_cells
+# for --provider smhi so the whole grid is fetched in one call.
 CACHE_CHECKPOINT_CHUNK_CELLS = 1000
 
 
@@ -95,6 +106,7 @@ def run_pipeline(
     run_time: datetime | None = None,
     history_cache_path: Path | None = None,
     cells_override: list[GridCell] | None = None,
+    cache_checkpoint_chunk_cells: int | None = None,
 ) -> dict:
     output_dir = output_dir or (GENERATED_DATA_DIR / "latest")
     # Deliberately a sibling of output_dir, not inside it -- output_dir
@@ -169,10 +181,11 @@ def run_pipeline(
             len(cells),
         )
 
+        chunk_size = cache_checkpoint_chunk_cells or CACHE_CHECKPOINT_CHUNK_CELLS
         weather_by_cell = {}
         new_cache: dict[str, HourlyWeather] = {}
-        for chunk_start in range(0, len(cells), CACHE_CHECKPOINT_CHUNK_CELLS):
-            chunk = cells[chunk_start : chunk_start + CACHE_CHECKPOINT_CHUNK_CELLS]
+        for chunk_start in range(0, len(cells), chunk_size):
+            chunk = cells[chunk_start : chunk_start + chunk_size]
 
             # Decide per cell, not once for the whole run: a cell with no
             # cached history yet (e.g. a prior backfill was killed before

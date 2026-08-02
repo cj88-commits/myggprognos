@@ -39,12 +39,19 @@ def main() -> None:
     weather_provider = None
     output_dir = None
     history_cache_path = None
+    cache_checkpoint_chunk_cells = None
     if args.provider == "smhi":
         from smhi_weather import SMHIProvider
 
         weather_provider = SMHIProvider()
         output_dir = GENERATED_DATA_DIR / "latest_smhi"
         history_cache_path = GENERATED_DATA_DIR / "weather_history_cache_smhi.json.gz"
+        # SMHIProvider's request cost is independent of how many cells are
+        # asked for (unlike Open-Meteo's per-cell batching) -- chunking
+        # into groups of 1000 like the Open-Meteo default would repeat its
+        # whole-domain fetch ~19x for nothing (confirmed live). One big
+        # chunk covering the whole grid instead.
+        cache_checkpoint_chunk_cells = 100_000
 
     try:
         result = run_pipeline(
@@ -52,6 +59,7 @@ def main() -> None:
             weather_provider=weather_provider,
             output_dir=output_dir,
             history_cache_path=history_cache_path,
+            cache_checkpoint_chunk_cells=cache_checkpoint_chunk_cells,
         )
     except Exception:
         logging.getLogger("mosquito_forecast").exception("Forecast pipeline failed")
