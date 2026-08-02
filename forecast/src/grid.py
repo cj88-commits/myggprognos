@@ -187,13 +187,27 @@ def _supplementary_island_cells(
     else:
         return []
 
-    # Only add a point once the nearest existing one is farther than this
-    # -- loose enough to not double up on cells the main lattice already
-    # placed, tight enough to actually catch gaps between adjacent
-    # squares (two squares centered `resolution_km` apart already touch
-    # edge-to-edge along that axis, but can still leave a real gap
-    # diagonally or where the coastline doesn't run straight).
-    GAP_FILL_FACTOR = 0.75
+    # Only add a point once the nearest existing one is farther than this.
+    # Must match a normal cell's actual painted *reach*, not just "close
+    # enough to seem redundant": a lattice point sitting on solid land
+    # (the common case -- prepare_cell_geometry.py only widens a cell's
+    # search past its own un-widened square when that square has *zero*
+    # land at all) only ever gets painted out to half of resolution_km
+    # from its own center. An earlier version of this threshold used
+    # 0.75x resolution_km (3.75km) on the reasoning that adjacent
+    # squares "already touch edge-to-edge" at that spacing -- true for
+    # the *squares themselves*, but irrelevant, since what's actually
+    # painted is each square clipped to real land, not the raw square.
+    # That left a real dead zone from 2.5km (true reach) to 3.75km (old
+    # threshold) where a point registered as "close enough, skip it" yet
+    # sat outside every nearby cell's real painted polygon. Confirmed
+    # live: sampling coastal points specifically (land within 3km of the
+    # true shoreline, not a whole-country uniform sample which dilutes
+    # the coast with the much larger, unaffected interior) found ~12%
+    # still uncovered after the first version of this fix, with nearly
+    # every uncovered point's nearest cell sitting 3.0-3.8km away --
+    # squarely inside that dead zone.
+    GAP_FILL_FACTOR = 0.5
     threshold_km = resolution_km * GAP_FILL_FACTOR
 
     # How far inward from a part's true edge to probe. Must comfortably
