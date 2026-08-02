@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import Iterable
 
 import httpx
+import numpy as np
 
 from config import (
     SMHI_ANALYSIS_BASE_URL,
@@ -51,7 +52,7 @@ from config import (
     SMHI_REQUEST_TIMEOUT_S,
 )
 from grid import GridCell
-from weather import HourlyWeather, WeatherValidationError, _plausible
+from weather import HourlyWeather, WeatherValidationError
 
 logger = logging.getLogger("mosquito_forecast.smhi_weather")
 
@@ -273,26 +274,42 @@ class SMHIProvider:
 
         fields = list(FORECAST_PARAMETERS.keys())
 
+        # Look up each field's domain-wide array ONCE per (field, time) pair
+        # and vectorize the per-cell extraction with numpy, instead of once
+        # per (cell, field, time) triple. At full-Sweden scale (~18.6k
+        # cells) the naive version repeated the SAME domain-wide dict
+        # lookup + range check independently for every cell -- ~65M
+        # redundant Python-level operations that dominated wall-clock time
+        # far more than the network fetch itself (confirmed live: a
+        # full-grid comparison run was still running after 45+ minutes on
+        # this step alone, versus ~5-9 minutes for the fetch).
+        idx_array = np.array([i if i is not None else 0 for i in indices], dtype=np.int64)
+        valid_mask = np.array([i is not None for i in indices], dtype=bool)
+        field_matrices: dict[str, np.ndarray] = {}
+        for field in fields:
+            lo, hi = PLAUSIBLE_RANGES[field]
+            matrix = np.full((len(raw_times_str), len(points)), np.nan, dtype=np.float64)
+            for row_i, t in enumerate(raw_times_str):
+                domain_values = analysis_data.get(field, {}).get(t) or forecast_data.get(field, {}).get(t)
+                if domain_values is None:
+                    continue
+                picked = np.asarray(domain_values, dtype=np.float64)[idx_array]
+                matrix[row_i] = np.where(valid_mask & (picked >= lo) & (picked <= hi), picked, np.nan)
+            field_matrices[field] = matrix
+
         # Build the target uniform hourly grid spanning the full requested
         # window, same shape OpenMeteoProvider would produce.
         window_start = now.replace(minute=0, second=0, microsecond=0) - timedelta(days=past_days)
         hourly_times = _build_hourly_grid(window_start, (past_days + forecast_days) * 24)
 
         results: dict[str, HourlyWeather] = {}
-        for cell, idx in zip(points, indices):
+        for i, (cell, idx) in enumerate(zip(points, indices)):
             if idx is None:
                 continue
-            raw_values: dict[str, list[float | None]] = {}
-            for field in fields:
-                series = []
-                for t in raw_times_str:
-                    domain_values = analysis_data.get(field, {}).get(t) or forecast_data.get(field, {}).get(t)
-                    if domain_values is None:
-                        series.append(None)
-                    else:
-                        lo, hi = PLAUSIBLE_RANGES[field]
-                        series.append(_plausible(domain_values[idx], lo, hi))
-                raw_values[field] = series
+            raw_values: dict[str, list[float | None]] = {
+                field: [None if np.isnan(v) else float(v) for v in field_matrices[field][:, i]]
+                for field in fields
+            }
 
             hourly_values = _forward_fill_onto_hourly(raw_times, raw_values, hourly_times)
             results[cell.cell_id] = HourlyWeather(
