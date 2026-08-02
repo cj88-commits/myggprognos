@@ -207,7 +207,16 @@ def run_pipeline(
             if incremental_cells:
                 fresh_by_cell.update(provider.fetch_combined(incremental_cells, INCREMENTAL_PAST_DAYS, FORECAST_DAYS))
 
-            for cell in chunk:
+            # Merging/splitting each cell's series is plain per-cell Python
+            # work (unlike SMHIProvider's fetch, which is vectorized) --
+            # for a large chunk (e.g. the whole grid in one chunk, as
+            # run_forecast.py does for --provider smhi) this alone can run
+            # long enough with zero log output to look stalled. Confirmed
+            # live: the log went silent here for 19+ minutes (past even
+            # the fetch-progress logging) before a run got cancelled.
+            for i, cell in enumerate(chunk):
+                if i == 0 or (i + 1) % 2000 == 0 or i == len(chunk) - 1:
+                    logger.info("Merging fetched weather into cache: %d/%d cells in this chunk", i + 1, len(chunk))
                 fresh = fresh_by_cell.get(cell.cell_id)
                 if fresh is None:
                     continue
