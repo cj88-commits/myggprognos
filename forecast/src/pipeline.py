@@ -232,6 +232,8 @@ def run_pipeline(
 
     hour_start = run_time.replace(minute=0, second=0, microsecond=0)
 
+    logger.info("Weather fetch done for %d/%d cells; starting scoring", len(weather_by_cell), len(cells))
+
     # Precompute expensive per-cell rolling-window state once (rather than
     # re-parsing/re-scanning the full weather series on every one of the 49
     # hourly + 28 daypart compute_features calls below) -- see
@@ -266,6 +268,16 @@ def run_pipeline(
         hour_label = target.strftime("%Y-%m-%dT%H")
         write_hourly_file(hour_label, records, output_dir)
         hourly_files.append(f"hourly/{hour_label}.json.gz")
+        # Scoring ~18.6k cells x 49 hours + 28 dayparts has no per-request
+        # network activity to log, unlike the weather fetch -- without
+        # this, a full-Sweden run produces a long stretch of zero log
+        # output during the CPU-bound scoring phase. Confirmed live: a
+        # 6+ minute silent gap here got a GitHub Actions job cancelled
+        # ("The operation was canceled.") with no other error, well before
+        # any configured timeout -- extended silence itself appears to be
+        # the trigger, not the actual compute time.
+        if h == 0 or (h + 1) % 10 == 0 or h == HOURLY_HORIZON_HOURS:
+            logger.info("Hourly scoring: %d/%d hours done", h + 1, HOURLY_HORIZON_HOURS + 1)
 
     # --- Daily (7 days, with daypart breakdown) ---
     daily_files: list[str] = []
@@ -330,6 +342,7 @@ def run_pipeline(
         write_daily_file(date_str, records, output_dir)
         daily_files.append(f"daily/{date_str}.json.gz")
         daily_records_by_date[date_str] = records
+        logger.info("Daily scoring: %d/7 days done", day_offset + 1)
 
     # --- Sanity checks (before publishing anything else) ---
     previous_manifest = load_previous_manifest(output_dir)
