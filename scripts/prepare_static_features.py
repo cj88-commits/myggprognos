@@ -3,16 +3,14 @@
 water proximity, elevation, etc.) for every cell in the full Sweden grid
 and cache them to data/static/cell_features.json.
 
-Real GIS layers are NOT bundled in this repository (they are large and/or
-license-encumbered for redistribution). To use real data:
+Real GIS source tiles are NOT bundled in this repository (multiple GB, not
+license-encumbered but impractical to commit). To use real data:
 
-  1. Download source layers into data/static/ (not committed to git):
-       - Copernicus CORINE Land Cover (land_cover.tif), see
-         https://land.copernicus.eu/pan-european/corine-land-cover
-       - A water bodies / hydrography layer (water_bodies.gpkg), e.g. from
-         Lantmateriet open data or OpenStreetMap water polygons.
-       - A DEM, e.g. Copernicus GLO-30 (elevation.tif).
-  2. Install the optional GIS extras: pip install geopandas rasterio
+  1. Run scripts/download_static_gis_data.py first -- downloads the ESA
+     WorldCover (land cover) and Copernicus DEM GLO-30 (elevation) tiles
+     that actually cover the current grid.json into data/static/worldcover/
+     and data/static/dem/ (both free, no login, public AWS S3).
+  2. Install the optional GIS extras: pip install rasterio geopandas
   3. Run: python scripts/prepare_static_features.py --real
 
 Without --real (the default), this script generates deterministic

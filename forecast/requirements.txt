@@ -6,6 +6,9 @@ PyYAML>=6.0
 pytest>=8.0
 
 # Optional, only required for real (non-sample) static-feature generation
-# from Copernicus/Lantmateriet GIS layers. Not needed for sample mode.
+# from ESA WorldCover + Copernicus DEM tiles (scripts/download_static_gis_data.py,
+# scripts/prepare_static_features.py --real). Not needed for sample mode or
+# for the scheduled pipeline, which reads the already-committed
+# data/static/cell_features.json rather than recomputing it -- see forecast.yml.
 # geopandas>=0.14
 # rasterio>=1.3

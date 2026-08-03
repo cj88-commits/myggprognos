@@ -77,10 +77,15 @@ faithful to the actual calculation, not a plausible-sounding guess.
 - **Not a measured mosquito count.** The model estimates favourable *conditions*, not actual mosquito
   presence or density.
 - **Not a disease-risk tool.** It says nothing about mosquito-borne disease risk.
-- **Static data is placeholder-quality in this MVP.** Land cover, wetland/forest fraction, and water
-  proximity are deterministic *placeholders* (see [Static geographic data](#static-geographic-data)) unless
-  you plug in real GIS layers. The Sweden land/ocean **boundary** used to shape the grid is real (see below)
-  — only the per-cell land-cover attributes are placeholders.
+- **Static land-cover data is real, but land-cover classification only approximates mosquito habitat.**
+  Forest/wetland/urban/water fraction and elevation come from real satellite/DEM sources (see
+  [Static geographic data](#static-geographic-data)), not placeholders. One real limitation worth knowing:
+  ESA WorldCover's "herbaceous wetland" class requires *open, non-forested* wetland to register — a lot of
+  Sweden's real mire/bog terrain (myrmark) is tree-covered and reads as forest, not wetland, in a satellite
+  land-cover snapshot. The highest wetland_fraction cells nationally do correctly cluster in Norrbotten's
+  fjäll/mire region and known bog complexes like Store Mosse, but a province like Dalarna won't show
+  elevated wetland *on average* just from this feature alone — real seasonal flooding/standing-water
+  dynamics are captured separately, by the weather-derived features, not by this static snapshot.
 - **Accuracy declines with forecast horizon** — day 7 is far less reliable than hour 1.
 - **User reports may be biased** (self-selected reporters, uneven geographic coverage) and are only ever
   blended in as a small, capped adjustment on top of the model — see [User reports](#user-reports-1).
@@ -93,8 +98,8 @@ faithful to the actual calculation, not a plausible-sounding guess.
 frontend/   React + TypeScript + Vite + MapLibre GL JS + Recharts (both lazy-loaded), deployed to GitHub Pages
 forecast/   Python 3.12 pipeline (weather → features → rule-based model → generated JSON), run by GitHub Actions every 6h
 worker/     Cloudflare Worker + D1, a tiny API for user mosquito reports
-data/       static (grid + boundary + land-cover placeholders), samples (fixtures), generated (pipeline output)
-scripts/    one-off/maintenance CLIs: prepare_grid, prepare_static_features, run_forecast
+data/       static (grid + boundary + real land-cover/elevation features), samples (fixtures), generated (pipeline output)
+scripts/    one-off/maintenance CLIs: prepare_grid, download_static_gis_data, prepare_static_features, run_forecast
 ```
 
 No persistent backend server: the frontend reads pre-computed, gzip-compressed JSON files published as
@@ -164,35 +169,44 @@ per selection instead of 56 files.
 
 ### Full Sweden grid
 
-`scripts/prepare_grid.py` generates a regular ~5km grid over `SWEDEN_BBOX`, filtered against the real
-boundary polygon above (`forecast/src/grid.py::generate_grid`), yielding roughly 18,000 land cells covering
-the mainland, Gotland (~100 cells) and Öland (~60 cells); ocean cells are excluded by the boundary test. The
-grid and its static features (`data/static/grid.json`, `data/static/cell_features.json`) are **not committed**
-to git — they're regenerable from the boundary file + `config.py`, and are cached between CI runs via
-`actions/cache` in `forecast.yml` (see that workflow's "Cache static grid + features" step), not via git.
+`scripts/prepare_grid.py` generates a ~5km grid over `SWEDEN_BBOX`, filtered against the real boundary
+polygon above and densified along every coastline/lakeshore to close gaps a fixed-phase lattice alone would
+miss (`forecast/src/grid.py::generate_grid`), yielding ~23,000 land cells covering the mainland, Gotland and
+Öland; ocean cells are excluded by the boundary test. `data/static/grid.json` is **not committed** to git —
+it's regenerable from the boundary file + `config.py`, and cached between CI runs via `actions/cache` in
+`forecast.yml` (see that workflow's "Cache grid" step). `data/static/cell_features.json` (see below) **is**
+committed, since — unlike grid.json — there's nothing in CI to regenerate it *from*.
 
-Regenerate locally with:
+Regenerate the grid locally with:
 
 ```bash
 python scripts/prepare_grid.py --resolution-km 5
-python scripts/prepare_static_features.py
 ```
 
 ### Static geographic data
 
-Real GIS layers are **not** committed (large, and often license-restricted for redistribution). To use real
-data:
+Real GIS source data, both free/no-login/publicly hosted as Cloud-Optimized GeoTIFFs on AWS S3:
+  - [ESA WorldCover 10m 2021](https://esa-worldcover.org/) — land cover (forest, herbaceous wetland,
+    built-up, permanent water bodies among its 11 classes) → `forest_fraction`, `wetland_fraction`,
+    `urban_fraction`, `water_fraction`, `distance_to_water_km`.
+  - [Copernicus DEM GLO-30](https://registry.opendata.aws/copernicus-dem/) — 30m elevation →
+    `elevation_m`, `slope_deg`.
+  - `coastal_exposure` is derived directly from the already-committed `sweden_boundary.geojson`, not a
+    separate download.
 
-1. Download into `data/static/` (git-ignored except the small derived JSON files):
-   - Copernicus CORINE / Copernicus Land Monitoring Service land cover → `land_cover.tif`
-   - A water bodies / hydrography layer (Lantmäteriet open data or OSM water polygons) → `water_bodies.gpkg`
-   - A DEM, e.g. Copernicus GLO-30 → `elevation.tif`
-2. `pip install geopandas rasterio` (optional extras, commented out in `forecast/requirements.txt`)
-3. `python scripts/prepare_static_features.py --real`
+To (re)compute `data/static/cell_features.json` after a `grid.json` change:
 
-Without `--real`, the script (and the scheduled pipeline) uses `generate_placeholder_static_features()` —
-deterministic per-cell values seeded from the cell ID and rough priors (more forest/wetland inland, more
-urban near known city centers). Clearly a placeholder, not measured data.
+```bash
+python scripts/download_static_gis_data.py   # ~4-5GB, only the tiles the current grid actually needs
+pip install rasterio geopandas               # optional extras, commented out in forecast/requirements.txt
+python scripts/prepare_static_features.py --real
+```
+
+`data/static/worldcover/` and `data/static/dem/` (the downloaded tiles) are git-ignored — only the small
+derived `cell_features.json` (a few MB) is committed. Without `--real`, the script (and the scheduled
+pipeline, only as a fallback if `cell_features.json` is ever missing outright) uses
+`generate_placeholder_static_features()` — deterministic per-cell values seeded from the cell ID and rough
+priors. Clearly a placeholder, not measured data; the committed file is real.
 
 ## Licence considerations
 
@@ -525,9 +539,10 @@ is set yet (would need a real 1200×630 PNG under `frontend/public/`); see the c
 
 ## Future improvements
 
-- **Real static GIS layers** — swap the placeholder forest/wetland/urban/water-body generator for real
-  Copernicus/Lantmäteriet data (see [Static geographic data](#static-geographic-data)); this is the single
-  biggest accuracy upgrade available without changing the model's structure.
+- **Higher-resolution wetland detection** — ESA WorldCover's "herbaceous wetland" class only registers
+  *open* wetland; a lot of real Swedish mire terrain is tree-covered and reads as forest instead (see
+  [Limitations](#limitations)). A forestry/peatland-specific layer (e.g. SLU's wetland forest mapping) would
+  catch this where WorldCover alone doesn't.
 - **Bilingual UI completion** — `frontend/src/i18n/en.ts` currently covers only a representative subset of
   keys as a proof of the locale structure; filling it in fully (plus a visible language switcher in the UI)
   would make English a real second locale rather than a partial fallback.

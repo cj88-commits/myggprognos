@@ -49,30 +49,47 @@ jobs:
       - run: pip install -r requirements.txt
         working-directory: forecast
 
-      # Grid geometry and static features are deterministic and expensive
-      # to recompute; cache them so the scheduled run only regenerates when
-      # the resolution/config actually changes (see forecast/src/config.py).
-      - name: Cache static grid + features
+      # Grid geometry is deterministic and expensive to recompute; cache it
+      # so the scheduled run only regenerates when the resolution/config
+      # actually changes (see forecast/src/config.py). cell_features.json
+      # is NOT cached here -- it's git-committed (see README "How to
+      # refresh static GIS features"), computed from several GB of ESA
+      # WorldCover + Copernicus DEM tiles that aren't available in CI, so
+      # there's nothing for this job to regenerate it *from*; the step
+      # below only ever produces a placeholder fallback, which must not
+      # silently overwrite the committed real data.
+      - name: Cache grid
         id: static-cache
         uses: actions/cache@v4
         with:
-          path: |
-            data/static/grid.json
-            data/static/cell_features.json
+          path: data/static/grid.json
           # v1 only hashed config.py, so a boundary-only change (e.g.
           # replacing data/static/sweden_boundary.geojson with a
           # higher-resolution one) silently kept serving the stale cached
           # grid -- bumped to v2 and widened to cover every input that
-          # actually affects grid/feature generation.
-          key: static-grid-v2-${{ hashFiles('forecast/src/config.py', 'forecast/src/grid.py', 'forecast/src/static_features.py', 'scripts/prepare_grid.py', 'scripts/prepare_static_features.py', 'data/static/sweden_boundary.geojson') }}
+          # actually affects grid generation.
+          key: static-grid-v2-${{ hashFiles('forecast/src/config.py', 'forecast/src/grid.py', 'scripts/prepare_grid.py', 'data/static/sweden_boundary.geojson') }}
 
       - name: Prepare grid (cache miss only)
         if: steps.static-cache.outputs.cache-hit != 'true'
         run: python scripts/prepare_grid.py
 
-      - name: Prepare static features (cache miss only)
-        if: steps.static-cache.outputs.cache-hit != 'true'
-        run: python scripts/prepare_static_features.py
+      - name: Prepare static features (only if missing)
+        # cell_features.json is committed (real GIS-derived data) and
+        # checked out by actions/checkout above -- this exists purely as a
+        # safety net for the (should-be-impossible) case where it's
+        # missing, e.g. a fresh grid.json cache-miss adds cells the
+        # committed file doesn't cover yet. pipeline.py's own
+        # missing-cell check (generate_placeholder_static_features per
+        # cell) already handles a *partial* gap without needing this step
+        # at all; this only fires if the file is absent outright.
+        run: |
+          if [ -f data/static/cell_features.json ]; then
+            echo "cell_features.json already present (committed real data) -- not regenerating"
+          else
+            echo "cell_features.json missing -- generating placeholders as a fallback"
+            python scripts/prepare_static_features.py
+          fi
 
       # SMHI is the default weather provider (see README) -- its
       # nearest-neighbor grid index only needs rebuilding when our own

@@ -15,15 +15,23 @@ __pycache__/
 venv/
 
 # Forecast pipeline caches / generated static features (regenerable; see
-# scripts/prepare_grid.py, scripts/prepare_static_features.py). The full
-# ~18k-cell grid.json + cell_features.json are derived from
-# sweden_boundary.geojson (committed) + config.py and cached by
-# forecast.yml via actions/cache, not git -- so they stay out of the repo.
+# scripts/prepare_grid.py, scripts/prepare_static_features.py). grid.json
+# is derived from sweden_boundary.geojson (committed) + config.py and
+# cached by forecast.yml via actions/cache, not git -- so it stays out of
+# the repo.
 data/cache/
 data/static/*.tif
 data/static/*.gpkg
 data/static/grid.json
-data/static/cell_features.json
+
+# Real GIS source tiles for static feature computation (scripts/
+# download_static_gis_data.py) -- several GB of ESA WorldCover + Copernicus
+# DEM tiles, free to re-download from public S3 but not sensible to commit.
+# cell_features.json (the small, derived-from-these output) IS committed --
+# see the note next to it in README "How to refresh static GIS features".
+data/static/worldcover/
+data/static/dem/
+data/static/cell_features.json.placeholder_backup
 
 # NOTE: data/generated/ is intentionally NOT ignored. forecast.yml commits
 # data/generated/latest on every run (see its "Commit and push updated
