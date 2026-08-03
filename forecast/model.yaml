@@ -36,18 +36,6 @@ model:
     minimum_humidity_percent: 35
     optimum_humidity_percent: 75
     rain_suppression_mm_per_hour: 1.0
-    # Weights (should sum to ~1.0) for combining the five bounded (0-1)
-    # activity terms as a weighted geometric mean rather than a plain
-    # product -- see model.py::compute_biting_activity. A plain product of
-    # several merely-mediocre (not bad) terms compounds into an
-    # unrealistically tiny number; the weighted geometric mean keeps each
-    # term's suppressive effect (a genuinely near-zero term still crushes
-    # the result) without that compounding.
-    temp_activity_weight: 0.25
-    humidity_activity_weight: 0.15
-    wind_suppression_weight: 0.20
-    daypart_activity_weight: 0.25
-    rain_suppression_weight: 0.15
 
   # Parameters for the "exposure" component (terrain + proximity to water).
   exposure:

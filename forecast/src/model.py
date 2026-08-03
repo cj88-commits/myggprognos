@@ -144,16 +144,6 @@ def compute_population_potential(features: FeatureSet, config: ModelConfig) -> t
     return normalized * 100.0, contributions
 
 
-_ACTIVITY_WEIGHTS_DEFAULT = {
-    "temp_activity": 0.25,
-    "humidity_activity": 0.15,
-    "wind_suppression": 0.20,
-    "daypart_activity": 0.25,
-    "rain_suppression": 0.15,
-}
-_LOG_FLOOR = 1e-6  # avoids log(0) for a term that's genuinely fully suppressed
-
-
 def compute_biting_activity(features: FeatureSet, config: ModelConfig) -> tuple[float, dict[str, float]]:
     params = config.activity_params or {
         "optimum_temperature_c": 23, "temperature_width": 10,
@@ -195,17 +185,19 @@ def compute_biting_activity(features: FeatureSet, config: ModelConfig) -> tuple[
         "rain_suppression": rain_suppression,
     }
 
-    # Weighted geometric mean rather than a plain product: each factor still
-    # suppresses activity multiplicatively (a genuinely near-zero factor,
-    # e.g. gale-force wind, still crushes the result), but several merely
-    # mediocre-but-not-bad factors (~0.7 each) no longer compound into an
-    # unrealistically tiny number just because there happen to be five of
-    # them. A plain product of five ~0.8 terms is ~0.33; the weighted
-    # geometric mean below keeps that same case around ~0.8.
-    weights = {k: params.get(f"{k}_weight", _ACTIVITY_WEIGHTS_DEFAULT[k]) for k in terms}
-    total_weight = sum(weights.values()) or 1.0
-    log_sum = sum(weights[k] * math.log(max(terms[k], _LOG_FLOOR)) for k in terms)
-    activity = clamp(math.exp(log_sum / total_weight), 0.0, 1.0)
+    # Plain product: each factor is an independent, real biological
+    # constraint on biting behavior (a mosquito hampered by wind is still
+    # hampered regardless of how favorable the temperature or time of day
+    # is), so a weak factor should pull the result down regardless of how
+    # good the others are. A weighted geometric mean was tried here instead
+    # (letting good factors partially offset a weak one), but that let
+    # merely-mediocre conditions -- e.g. 15°C (well below the 23°C
+    # optimum) with a light breeze -- read as ~80% activity, which real
+    # field observations contradicted (confirmed live: a case with visibly
+    # very few mosquitoes scored 82% under the geometric mean, ~40% under
+    # this plain product).
+    activity = temperature_activity * humidity_activity * wind_suppression * daypart_activity * rain_suppression
+    activity = clamp(activity, 0.0, 1.0)
 
     return activity * 100.0, terms
 
