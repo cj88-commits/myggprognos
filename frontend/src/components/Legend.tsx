@@ -20,8 +20,9 @@ export function Legend({ layer }: { layer: LayerKey }) {
   const title = layer === "confidence" ? t("legend.confidenceTitle") : t("legend.riskTitle");
 
   return (
-    <details className="legend" open>
+    <details className="legend">
       <summary aria-label={title}>
+        <span className="legend-arrow" aria-hidden="true" />
         <strong>{title}</strong>
       </summary>
       <div className="legend-scale">

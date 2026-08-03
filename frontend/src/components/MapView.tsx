@@ -138,18 +138,48 @@ export function MapView({
 
     // Attribution comes from the style's own vector source (its tilejson
     // carries "© OpenStreetMap contributors © CARTO"), picked up
-    // automatically by the default AttributionControl -- no manual
-    // attribution string needed here.
+    // automatically by AttributionControl. `compact: true` gets us the
+    // small round "i" icon button (only rendered at all when the control
+    // has the "maplibregl-compact" class -- confirmed in maplibre-gl's own
+    // CSS) -- but MapLibre's *own* show/hide bookkeeping for the attribution
+    // text (an "open" attribute + "maplibregl-compact-show" class, toggled
+    // on a schedule tied to map "resize"/"idle" events) turned out
+    // unreliable to force into starting collapsed from outside: attempts to
+    // override it raced with MapLibre's own updates and could leave the
+    // control permanently empty ("maplibregl-attrib-empty") depending on
+    // timing (confirmed live).
+    //
+    // So we leave MapLibre's own open/compact-show bookkeeping alone
+    // entirely and layer independent, !important-forced visibility on top
+    // via our own class, which its code never touches -- see
+    // "maplibregl-ctrl-attrib" rules in global.css.
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: styleUrl,
       center: SWEDEN_CENTER,
       zoom: SWEDEN_INITIAL_ZOOM,
+      // Omitting this auto-adds MapLibre's own default AttributionControl
+      // *in addition to* the explicit compact one below -- two separate
+      // controls, which is what was actually causing every odd visibility
+      // symptom while diagnosing this (confirmed live: two
+      // ".maplibregl-ctrl-attrib" elements in the DOM).
+      attributionControl: false,
     });
+    map.addControl(new maplibregl.AttributionControl({ compact: true }));
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     mapRef.current = map;
 
     map.on("load", () => {
+      // Wired here (not right after construction) so the control's DOM is
+      // guaranteed to exist -- AttributionControl is added internally by
+      // the Map constructor, but not necessarily synchronously enough to
+      // querySelector for it immediately after `new maplibregl.Map(...)`.
+      const attribButton = map.getContainer().querySelector(".maplibregl-ctrl-attrib-button");
+      attribButton?.addEventListener("click", (event) => {
+        event.preventDefault(); // don't fight MapLibre's own "open" bookkeeping
+        attribButton.closest(".maplibregl-ctrl-attrib")?.classList.toggle("myggprognos-attrib-expanded");
+      });
+
       map.addSource("cells", { type: "geojson", data: featureCollection });
 
       // Insert below water so any real map labels/road lines that sit on

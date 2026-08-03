@@ -371,10 +371,26 @@ a {
 .legend summary {
   cursor: pointer;
   list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .legend summary::-webkit-details-marker {
   display: none;
+}
+
+.legend-arrow {
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 4px 0 4px 5px;
+  border-color: transparent transparent transparent var(--color-text-muted);
+  transition: transform 0.15s ease;
+}
+
+.legend[open] .legend-arrow {
+  transform: rotate(90deg);
 }
 
 .legend-scale {
@@ -391,6 +407,18 @@ a {
 .legend-swatch .chip {
   height: 10px;
   border-radius: 3px;
+}
+
+/* Collapsed-by-default MapLibre attribution: overrides MapLibre's own
+   compact-mode visibility rules outright (!important) rather than relying
+   on cascade order against its own "maplibregl-compact-show" class, which
+   it manages independently and unreliably (see MapView.tsx's comment next
+   to where the toggle click listener is wired). */
+.maplibregl-ctrl-attrib:not(.myggprognos-attrib-expanded) .maplibregl-ctrl-attrib-inner {
+  display: none !important;
+}
+.maplibregl-ctrl-attrib.myggprognos-attrib-expanded .maplibregl-ctrl-attrib-inner {
+  display: block !important;
 }
 
 .status-banner {
