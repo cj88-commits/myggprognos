@@ -52,7 +52,7 @@ def _population_candidates(score: ScoreResult) -> list[Factor]:
 def _activity_candidates(score: ScoreResult) -> tuple[list[Factor], list[Factor]]:
     positive, negative = [], []
     boosters = {"temp_activity", "humidity_activity", "daypart_activity"}
-    suppressors = {"wind_suppression", "rain_suppression", "dry_air_suppression"}
+    suppressors = {"wind_suppression", "rain_suppression"}
     for key, value in score.activity_terms.items():
         if key in boosters and value > 0.6:
             positive.append(Factor(key, POSITIVE_LABELS.get(key, key), round((value - 0.5) * 0.4, 3)))

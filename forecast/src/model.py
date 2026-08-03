@@ -82,7 +82,6 @@ POSITIVE_LABELS = {
 NEGATIVE_LABELS = {
     "wind_suppression": "Vind som dämpar myggaktivitet",
     "rain_suppression": "Aktivt regn som dämpar aktivitet",
-    "dry_air_suppression": "Torr luft som dämpar aktivitet",
     "freezing": "Nyligt minusgrader",
     "urban_suppression": "Stadsmiljö",
 }
@@ -145,6 +144,16 @@ def compute_population_potential(features: FeatureSet, config: ModelConfig) -> t
     return normalized * 100.0, contributions
 
 
+_ACTIVITY_WEIGHTS_DEFAULT = {
+    "temp_activity": 0.25,
+    "humidity_activity": 0.15,
+    "wind_suppression": 0.20,
+    "daypart_activity": 0.25,
+    "rain_suppression": 0.15,
+}
+_LOG_FLOOR = 1e-6  # avoids log(0) for a term that's genuinely fully suppressed
+
+
 def compute_biting_activity(features: FeatureSet, config: ModelConfig) -> tuple[float, dict[str, float]]:
     params = config.activity_params or {
         "optimum_temperature_c": 23, "temperature_width": 10,
@@ -161,10 +170,12 @@ def compute_biting_activity(features: FeatureSet, config: ModelConfig) -> tuple[
         temperature_activity *= 0.15
 
     humidity = features.humidity_current_pct if features.humidity_current_pct is not None else 55.0
+    # A single sigmoid on humidity -- a separate binary "dry air" cutoff on
+    # the same underlying value used to be multiplied in here too, which
+    # double-penalized low humidity rather than adding new information.
     humidity_activity = scale_sigmoid(
         humidity, midpoint=params.get("minimum_humidity_percent", 35) + 5, steepness=0.12
     )
-    dry_air_suppression = 1.0 if humidity >= params.get("minimum_humidity_percent", 35) else 0.5
 
     wind = features.wind_speed_current_ms if features.wind_speed_current_ms is not None else 2.0
     wind_full = params.get("wind_full_suppression_ms", 9.0)
@@ -176,24 +187,26 @@ def compute_biting_activity(features: FeatureSet, config: ModelConfig) -> tuple[
     rain_threshold = params.get("rain_suppression_mm_per_hour", 1.0)
     rain_suppression = clamp(1.0 - scale_sigmoid(features.current_precipitation_mm, midpoint=rain_threshold, steepness=2.5), 0.0, 1.0)
 
-    activity = (
-        temperature_activity
-        * humidity_activity
-        * dry_air_suppression
-        * wind_suppression
-        * daypart_activity
-        * rain_suppression
-    )
-    activity = clamp(activity, 0.0, 1.0)
-
     terms = {
         "temp_activity": temperature_activity,
         "humidity_activity": humidity_activity,
-        "dry_air_suppression": dry_air_suppression,
         "wind_suppression": wind_suppression,
         "daypart_activity": daypart_activity,
         "rain_suppression": rain_suppression,
     }
+
+    # Weighted geometric mean rather than a plain product: each factor still
+    # suppresses activity multiplicatively (a genuinely near-zero factor,
+    # e.g. gale-force wind, still crushes the result), but several merely
+    # mediocre-but-not-bad factors (~0.7 each) no longer compound into an
+    # unrealistically tiny number just because there happen to be five of
+    # them. A plain product of five ~0.8 terms is ~0.33; the weighted
+    # geometric mean below keeps that same case around ~0.8.
+    weights = {k: params.get(f"{k}_weight", _ACTIVITY_WEIGHTS_DEFAULT[k]) for k in terms}
+    total_weight = sum(weights.values()) or 1.0
+    log_sum = sum(weights[k] * math.log(max(terms[k], _LOG_FLOOR)) for k in terms)
+    activity = clamp(math.exp(log_sum / total_weight), 0.0, 1.0)
+
     return activity * 100.0, terms
 
 

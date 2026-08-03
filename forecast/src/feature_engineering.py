@@ -21,6 +21,7 @@ import bisect
 import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import numpy as np
 
@@ -31,6 +32,14 @@ HEAVY_RAIN_MM_PER_DAY = 15.0
 MEANINGFUL_RAIN_MM = 1.0
 WARM_NIGHT_THRESHOLD_C = 15.0
 FREEZING_THRESHOLD_C = 0.0
+
+# Every weather timestamp we handle is UTC; but the model's daypart/dusk-dawn
+# curve (see model.py::_daypart_activity_curve) and the DAYPARTS bucket
+# labels (config.py) are calibrated against actual Swedish clock time. Using
+# raw UTC hours there silently shifted "dusk" and "dawn" by 1-2 hours
+# (CET/CEST), which mattered most in summer (CEST, UTC+2) -- exactly
+# mosquito season.
+SWEDEN_TZ = ZoneInfo("Europe/Stockholm")
 
 
 @dataclass
@@ -285,6 +294,7 @@ def compute_features(
 ) -> FeatureSet:
     if target_time.tzinfo is None:
         target_time = target_time.replace(tzinfo=timezone.utc)
+    local_time = target_time.astimezone(SWEDEN_TZ)
 
     parsed_times = rolling.parsed_times if rolling is not None else _parse_times(weather.times)
     total = len(weather.times) or 1
@@ -326,7 +336,7 @@ def compute_features(
         night_temps = [
             v
             for t, v in zip(parsed_times[night_start : idx + 1], weather.temperature_2m[night_start : idx + 1])
-            if v is not None and (t.hour >= 22 or t.hour <= 5)
+            if v is not None and (t.astimezone(SWEDEN_TZ).hour >= 22 or t.astimezone(SWEDEN_TZ).hour <= 5)
         ]
         warm_night = bool(night_temps) and min(night_temps) >= WARM_NIGHT_THRESHOLD_C
         freezing_recently = daily_min is not None and daily_min <= FREEZING_THRESHOLD_C
@@ -455,7 +465,7 @@ def compute_features(
 
         evening_times_idx = [
             i for i, t in enumerate(parsed_times)
-            if t.date() == target_time.date() and 18 <= t.hour <= 21
+            if t.astimezone(SWEDEN_TZ).date() == local_time.date() and 18 <= t.astimezone(SWEDEN_TZ).hour <= 21
         ]
         evening_wind = _mean([weather.wind_speed_10m[i] for i in evening_times_idx]) if evening_times_idx else current_wind
         evening_humidity = _mean([weather.relative_humidity_2m[i] for i in evening_times_idx]) if evening_times_idx else current_humidity
@@ -466,7 +476,7 @@ def compute_features(
         forecast_wind_idx = min(range(len(parsed_times)), key=lambda i: abs((parsed_times[i] - (target_time + timedelta(hours=6))).total_seconds())) if parsed_times else None
         wind_forecast = weather.wind_speed_10m[forecast_wind_idx] if forecast_wind_idx is not None else current_wind
 
-    day_of_year = target_time.timetuple().tm_yday
+    day_of_year = local_time.timetuple().tm_yday
     hours = daylight_hours(weather.latitude, day_of_year)
     seasonal = seasonal_suitability_curve(day_of_year, weather.latitude)
 
@@ -514,8 +524,8 @@ def compute_features(
         day_of_year=day_of_year,
         latitude=weather.latitude,
         daylight_hours=hours,
-        hour_of_day=target_time.hour,
-        daypart=_daypart(target_time.hour),
+        hour_of_day=local_time.hour,
+        daypart=_daypart(local_time.hour),
         seasonal_suitability=round(seasonal, 4),
         forest_fraction=static.forest_fraction,
         wetland_fraction=static.wetland_fraction,
