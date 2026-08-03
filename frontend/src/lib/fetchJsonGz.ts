@@ -22,7 +22,26 @@ function supportsDecompressionStream(): boolean {
   return typeof DecompressionStream !== "undefined";
 }
 
+// A server/proxy/CDN in front of these static .json.gz files can declare
+// `Content-Encoding: gzip` for them (some dev servers, and conceivably some
+// production static hosts, auto-negotiate this for compressible-looking
+// assets) -- when that happens the browser's own fetch() implementation
+// already transparently decompressed the body before handing it to us, so
+// re-running DecompressionStream on it would fail (it's not gzip data
+// anymore). Gzip's own magic bytes (1f 8b) let us tell the two cases apart
+// reliably rather than guessing from headers, which vary by host.
+function looksGzipped(buffer: ArrayBuffer): boolean {
+  if (buffer.byteLength < 2) return false;
+  const bytes = new Uint8Array(buffer, 0, 2);
+  return bytes[0] === 0x1f && bytes[1] === 0x8b;
+}
+
 async function decompressGzip(buffer: ArrayBuffer): Promise<string> {
+  if (!looksGzipped(buffer)) {
+    // Already plain text -- most likely transparently decompressed
+    // in transit (see above), not actually still gzip-encoded.
+    return new TextDecoder().decode(buffer);
+  }
   if (!supportsDecompressionStream()) {
     throw new Error(
       "This browser does not support native gzip decompression (DecompressionStream). " +

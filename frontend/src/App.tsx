@@ -286,6 +286,7 @@ export default function App() {
           cellId={selectedCell?.cell_id ?? null}
           manifest={manifest}
           activity={activity}
+          layer={layer}
           activeRecord={activeRecord}
           activeDailyRecord={activeDailyRecord}
           activeLabel={activeLabel}

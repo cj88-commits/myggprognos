@@ -66,6 +66,8 @@ const sv = {
   "panel.empty": "Välj en plats på kartan, sök efter en ort, eller använd din nuvarande plats för att se myggrisken.",
   "panel.riskLabel": "{category} risk",
   "panel.activityAdjusted": "Aktivitetsanpassad för {activity}",
+  "panel.metricLabel": "{metric}: {category}",
+  "panel.viewingLayer": "Visar {layer} på kartan och här nedan, inte totalrisk.",
   "panel.modelEstimate":
     "Modellens uppskattning: {model}. Justerad med {count} nya rapporter i närheten: {adjusted} (rapportvikt {weight}%).",
   "panel.population": "Population",

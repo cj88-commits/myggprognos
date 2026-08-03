@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import type { DailyRecord, Manifest, ScoreFields } from "../types/forecast";
-import { confidenceCategory, finalRiskForActivity, formatScore, riskCategory } from "../lib/riskModel";
+import type { DailyRecord, LayerKey, Manifest, ScoreFields } from "../types/forecast";
+import { confidenceCategory, exposureForActivity, finalRiskForActivity, formatScore, riskCategory } from "../lib/riskModel";
 import { computeAdjustedRisk } from "../lib/reportAdjustment";
 import { getReportSummary, isReportingConfigured, type ReportSummary } from "../lib/reportsApi";
 import type { LocationSeries } from "../hooks/useForecastData";
@@ -26,6 +26,7 @@ export interface LocationPanelProps {
   cellId: string | null;
   manifest: Manifest | null;
   activity: string;
+  layer: LayerKey;
   activeRecord: ScoreFields | null;
   activeDailyRecord: DailyRecord | null;
   activeLabel: string;
@@ -68,6 +69,7 @@ export function LocationPanel({
   cellId,
   manifest,
   activity,
+  layer,
   activeRecord,
   activeDailyRecord,
   activeLabel,
@@ -121,10 +123,29 @@ export function LocationPanel({
     activeRecord.base_exposure_fraction,
     activityMultiplier
   );
-  const category = riskCategory(adjustedFinalRisk);
-  const categoryLabel = t(`risk.category.${category.key}` as I18nKey);
+
+  // The hero score/badge/color must track whichever metric the map is
+  // actually colored by (`layer`) -- previously this always showed overall
+  // risk even when the map (and its legend) had been switched to e.g.
+  // "Bettaktivitet" (biting activity), so toggling the layer changed the
+  // map but silently left the panel's number, badge, and explanation
+  // talking about a different metric entirely.
+  const isRiskLayer = layer === "risk";
+  const displayValue = isRiskLayer
+    ? adjustedFinalRisk
+    : layer === "confidence"
+      ? activeRecord.confidence
+      : activeRecord[layer];
+  // population_potential/biting_activity are bounded 0-100 "how favourable/
+  // active is it" scores just like risk, so the same five-band scale/colors
+  // apply; confidence has its own three-band scale.
   const confCategory = confidenceCategory(activeRecord.confidence);
   const confLabel = t(`confidence.${confCategory}` as I18nKey);
+  const riskLikeCategory = riskCategory(displayValue);
+  const riskLikeLabel = t(`risk.category.${riskLikeCategory.key}` as I18nKey);
+  const categoryLabel = layer === "confidence" ? confLabel : riskLikeLabel;
+  const heroColor = layer === "confidence" ? "var(--color-text)" : riskLikeCategory.color;
+  const layerLabel = t(`layer.${layer}` as I18nKey);
 
   const reportAdjustment = computeAdjustedRisk(adjustedFinalRisk, reportSummary);
 
@@ -138,19 +159,29 @@ export function LocationPanel({
       </div>
 
       <div className="score-hero">
-        <div className="score-value" style={{ color: category.color }}>
-          {formatScore(adjustedFinalRisk)}
+        <div className="score-value" style={{ color: heroColor }}>
+          {formatScore(displayValue)}
         </div>
         <div>
-          <span className="risk-badge" style={{ color: category.color }}>
+          <span className="risk-badge" style={{ color: heroColor }}>
             <span className="dot" aria-hidden="true" />
-            {t("panel.riskLabel", { category: categoryLabel })}
+            {isRiskLayer
+              ? t("panel.riskLabel", { category: categoryLabel })
+              : t("panel.metricLabel", { metric: layerLabel, category: categoryLabel })}
           </span>
-          <div style={{ fontSize: "0.78rem", color: "var(--color-text-muted)", marginTop: "0.3rem" }}>
-            {t("panel.activityAdjusted", { activity: t(`activity.${activity}` as I18nKey) })}
-          </div>
+          {isRiskLayer && (
+            <div style={{ fontSize: "0.78rem", color: "var(--color-text-muted)", marginTop: "0.3rem" }}>
+              {t("panel.activityAdjusted", { activity: t(`activity.${activity}` as I18nKey) })}
+            </div>
+          )}
         </div>
       </div>
+
+      {!isRiskLayer && (
+        <p style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
+          {t("panel.viewingLayer", { layer: layerLabel })}
+        </p>
+      )}
 
       {reportAdjustment.applied && (
         <p style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
@@ -166,7 +197,10 @@ export function LocationPanel({
       <div className="subscore-grid">
         <SubscoreCard label={t("panel.population")} value={activeRecord.population_potential} />
         <SubscoreCard label={t("panel.activity")} value={activeRecord.biting_activity} />
-        <SubscoreCard label={t("panel.exposure")} value={activeRecord.exposure} />
+        <SubscoreCard
+          label={t("panel.exposure")}
+          value={exposureForActivity(activeRecord.base_exposure_fraction, activityMultiplier)}
+        />
       </div>
 
       <div>
@@ -181,7 +215,7 @@ export function LocationPanel({
         </div>
       </div>
 
-      {activeDailyRecord && (
+      {activeDailyRecord && isRiskLayer && (
         <div>
           <div className="section-title">{t("panel.whyTitle")}</div>
           <p style={{ margin: 0, fontSize: "0.9rem" }}>{activeDailyRecord.explanation.summary}</p>
