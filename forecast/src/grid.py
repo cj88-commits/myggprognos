@@ -217,7 +217,21 @@ def _supplementary_island_cells(
     # necessarily the inland one geometrically closest to the true edge.
     COASTAL_FRINGE_KM = 15.0
 
-    PROBE_KM = resolution_km / 3
+    # Fine enough to reliably catch a real ~1km-wide feature regardless of
+    # the probe grid's phase (worst-case offset from any point to the
+    # nearest probe node is PROBE_KM*sqrt(2)/2 =~ 0.42km at this spacing,
+    # comfortably under 1km) without being wastefully slow: confirmed
+    # live, resolution_km/3 (~1.67km) still straddle-missed real land
+    # 1-1.2km from two separate reported gaps, both sitting inside one
+    # single large connected fringe piece (the mainland's own coastal
+    # band doesn't fragment into separate per-skerry pieces the way a
+    # true archipelago's does -- our boundary source doesn't model those
+    # skerries as topologically separate from the mainland at all, so
+    # there's no smaller connected piece for a per-piece fallback to
+    # catch; only a finer probe helps here). Tested 0.25km directly:
+    # ~17 minutes for the mainland's fringe alone, too slow for routine
+    # re-runs; 0.6km was ~96s for the same (by far the largest) fringe.
+    PROBE_KM = 0.6
     fringe_deg = COASTAL_FRINGE_KM / KM_PER_DEGREE_LAT
 
     # Kept RAW (unscaled) here -- a single longitude-scale factor for the
@@ -238,57 +252,86 @@ def _supplementary_island_cells(
         dlat = (placed[:, 1] - lat) * KM_PER_DEGREE_LAT
         return float(np.sqrt((dlon * dlon + dlat * dlat).min()))
 
+    def _polygon_pieces(geom) -> list:
+        """Flatten a Polygon/MultiPolygon/GeometryCollection (the latter
+        can come out of a difference() near self-intersections) down to
+        its individual Polygon pieces, dropping any stray lines/points."""
+        if geom.is_empty:
+            return []
+        if geom.geom_type == "Polygon":
+            return [geom]
+        if geom.geom_type in ("MultiPolygon", "GeometryCollection"):
+            pieces: list = []
+            for sub in geom.geoms:
+                pieces.extend(_polygon_pieces(sub))
+            return pieces
+        return []
+
     extra: list[GridCell] = []
     for i, part in enumerate(parts):
         interior = part.buffer(-fringe_deg)
         fringe = part.difference(interior) if not interior.is_empty else part
-        part_minx, part_miny, part_maxx, part_maxy = fringe.bounds
-        part_mid_lat = (part_miny + part_maxy) / 2
-        part_lon_scale = math.cos(math.radians(part_mid_lat))
-        lat_step = PROBE_KM / KM_PER_DEGREE_LAT
-        lon_step = PROBE_KM / _km_per_degree_lon(part_mid_lat)
+        # A part's fringe is frequently itself disconnected -- e.g. the
+        # mainland's coastal band, intersected with a genuinely
+        # fragmented stretch of coast (Bohuslan, the outer archipelago),
+        # splits into many separate small pieces, each really its own
+        # lone skerry. Probing the fringe as ONE region with a single
+        # fixed-phase grid (the previous version of this function) can
+        # straddle-miss any piece narrower than the probe spacing --
+        # confirmed live: real land 1-1.2km from two separate reported
+        # gaps, inside the mainland's fringe, got zero probe hits despite
+        # PROBE_KM being well under that. Processing each connected piece
+        # separately, with its own guaranteed representative_point()
+        # fallback (the same safety net the original per-part version of
+        # this function relied on), removes that phase-alignment risk.
+        for j, piece in enumerate(_polygon_pieces(fringe)):
+            piece_minx, piece_miny, piece_maxx, piece_maxy = piece.bounds
+            piece_mid_lat = (piece_miny + piece_maxy) / 2
+            piece_lon_scale = math.cos(math.radians(piece_mid_lat))
+            lat_step = PROBE_KM / KM_PER_DEGREE_LAT
+            lon_step = PROBE_KM / _km_per_degree_lon(piece_mid_lat)
 
-        part_added = 0
-        lat = part_miny
-        while lat <= part_maxy:
-            lon = part_minx
-            while lon <= part_maxx:
-                if fringe.contains(Point(lon, lat)) and min_dist_km(lon, lat, part_lon_scale) > threshold_km:
+            piece_added = 0
+            lat = piece_miny
+            while lat <= piece_maxy:
+                lon = piece_minx
+                while lon <= piece_maxx:
+                    if piece.contains(Point(lon, lat)) and min_dist_km(lon, lat, piece_lon_scale) > threshold_km:
+                        extra.append(
+                            GridCell(
+                                cell_id=f"SE_ISLE_{i:04d}_{j:04d}_{piece_added:03d}",
+                                latitude=round(lat, 5),
+                                longitude=round(lon, 5),
+                                region=_approx_region(lat),
+                            )
+                        )
+                        piece_added += 1
+                        placed = np.vstack([placed, [[lon, lat]]])
+                        if max_cells is not None and len(cells) + len(extra) >= max_cells:
+                            return extra
+                    lon += lon_step
+                lat += lat_step
+
+            if piece_added == 0:
+                # Sub-probe-resolution piece (smaller than PROBE_KM in
+                # some direction, or just unlucky with the grid's phase)
+                # -- guarantee it still gets *some* cell via its
+                # representative_point() (guaranteed inside the polygon,
+                # unlike a plain centroid, which can fall outside for
+                # concave/crescent shapes).
+                rep = piece.representative_point()
+                if min_dist_km(rep.x, rep.y, piece_lon_scale) > threshold_km:
                     extra.append(
                         GridCell(
-                            cell_id=f"SE_ISLE_{i:04d}_{part_added:03d}",
-                            latitude=round(lat, 5),
-                            longitude=round(lon, 5),
-                            region=_approx_region(lat),
+                            cell_id=f"SE_ISLE_{i:04d}_{j:04d}_000",
+                            latitude=round(rep.y, 5),
+                            longitude=round(rep.x, 5),
+                            region=_approx_region(rep.y),
                         )
                     )
-                    part_added += 1
-                    placed = np.vstack([placed, [[lon, lat]]])
+                    placed = np.vstack([placed, [[rep.x, rep.y]]])
                     if max_cells is not None and len(cells) + len(extra) >= max_cells:
                         return extra
-                lon += lon_step
-            lat += lat_step
-
-        if part_added == 0:
-            # Sub-resolution part (smaller than one grid cell in every
-            # direction) -- the tiling above can legitimately land zero
-            # candidates inside it. Fall back to its representative_point()
-            # (guaranteed inside the polygon, unlike a plain centroid,
-            # which can fall outside for concave/crescent shapes) so it
-            # still gets *some* cell rather than none.
-            rep = part.representative_point()
-            if min_dist_km(rep.x, rep.y, part_lon_scale) > threshold_km:
-                extra.append(
-                    GridCell(
-                        cell_id=f"SE_ISLE_{i:04d}_000",
-                        latitude=round(rep.y, 5),
-                        longitude=round(rep.x, 5),
-                        region=_approx_region(rep.y),
-                    )
-                )
-                placed = np.vstack([placed, [[rep.x, rep.y]]])
-                if max_cells is not None and len(cells) + len(extra) >= max_cells:
-                    return extra
 
     return extra
 

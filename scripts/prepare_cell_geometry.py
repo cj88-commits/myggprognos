@@ -93,7 +93,21 @@ def main() -> None:
     # lake polygons are already confirmed, via the zero-interior-holes
     # finding above, to be an imprecise/low-resolution source that
     # doesn't reliably track the true shoreline).
-    LAKE_OVERSHOOT_FRACTION = 0.5
+    #
+    # Originally 0.5, raised to 0.75 after a live report (a cell right by
+    # Vanersborg, where Vanern narrows into a strait -- exactly the kind
+    # of complex, narrow-channel geography a simplified lake polygon
+    # handles worst) kept 57% of its land, just above the old cutoff, and
+    # stayed visibly under-painted. There's no clean bimodal split in the
+    # data between "genuinely mostly-lake" and "bad-data-clipped" cells
+    # (sampled: 34% of lake-touching, otherwise-confirmed-land cells fall
+    # below 0.5, 55% below 0.7, 77% below 0.9) -- given these specific
+    # lakes' data is already confirmed unreliable and every live report
+    # so far has been "this land should be coloured, not the reverse",
+    # 0.75 leans toward trusting the accurate land source over the known
+    # imprecise lake source rather than trying to find a nonexistent
+    # clean boundary.
+    LAKE_OVERSHOOT_FRACTION = 0.75
     WIDEN_FACTORS = (1, 1.5, 2, 3)
     for cell in cells:
         paintable = None
