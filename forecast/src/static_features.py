@@ -267,9 +267,6 @@ def _land_cover_features(ds, lon: float, lat: float) -> tuple[float, float, floa
     return forest, wetland, urban, water, dist_km
 
 
-_NMD_NODATA_FALLBACK_THRESHOLD = 0.5  # cell's fraction window mostly unclassified -> use WorldCover instead
-
-
 def _read_window_projected(ds, x: float, y: float, radius_km: float, out_size: int):
     """Like _read_window, but for a dataset in a projected (metric) CRS such
     as NMD's native SWEREF99 TM -- no lon/lat-dependent degree scaling
@@ -296,8 +293,9 @@ def _nmd_land_cover_features(ds, x: float, y: float) -> tuple[float, float, floa
     for one cell, sampled directly against NMD's native SWEREF99 TM grid at
     projected coordinates (x, y). nodata_fraction is the share of the
     fraction window NMD hasn't classified yet (rollout still in progress,
-    see module docstring) -- callers should fall back to WorldCover above
-    _NMD_NODATA_FALLBACK_THRESHOLD."""
+    see module docstring) -- callers should blend proportionally with
+    WorldCover rather than switching sources outright, to avoid a visible
+    seam at the coverage edge."""
     import numpy as np
 
     frac_arr = _read_window_projected(ds, x, y, _FRACTION_RADIUS_KM, _FRACTION_OUT_SIZE)
@@ -424,14 +422,37 @@ def compute_static_features_from_rasters(cells: list[GridCell], static_data_dir:
 
         with rasterio.open(nmd_tifs[0]) as nmd_ds:
             to_nmd_crs = Transformer.from_crs("EPSG:4326", nmd_ds.crs.to_wkt(), always_xy=True)
-            nmd_used = 0
+            nmd_pure = 0
+            nmd_blended = 0
             for cell in cells:
                 x, y = to_nmd_crs.transform(cell.longitude, cell.latitude)
                 forest, wetland, urban, water, dist_water, nodata_frac = _nmd_land_cover_features(nmd_ds, x, y)
-                if nodata_frac < _NMD_NODATA_FALLBACK_THRESHOLD:
-                    land_cover_by_cell[cell.cell_id] = (forest, wetland, urban, water, dist_water)
-                    nmd_used += 1
-        print(f"NMD2023 used for {nmd_used}/{len(cells)} cells (WorldCover fallback for the rest).")
+                if nodata_frac >= 1.0:
+                    continue  # no NMD signal at all here -- pure WorldCover stands
+                # Linearly blend with the WorldCover-derived tuple already in
+                # land_cover_by_cell, weighted by how much of this cell's
+                # window NMD actually classified -- a hard cutover (fully
+                # NMD vs. fully WorldCover from one cell to the next) drew a
+                # visible seam on the map exactly where NMD's south-to-north
+                # rollout currently ends, since the two sources don't agree
+                # on typical wetland/forest values. Blending means cells
+                # straddling that edge grade smoothly between the two
+                # instead of jumping.
+                nmd_weight = 1.0 - nodata_frac
+                wc = land_cover_by_cell[cell.cell_id]
+                blended = tuple(
+                    nmd_weight * nmd_val + (1.0 - nmd_weight) * wc_val
+                    for nmd_val, wc_val in zip((forest, wetland, urban, water, dist_water), wc)
+                )
+                land_cover_by_cell[cell.cell_id] = blended
+                if nodata_frac <= 0.0:
+                    nmd_pure += 1
+                else:
+                    nmd_blended += 1
+        print(
+            f"NMD2023 used for {nmd_pure}/{len(cells)} cells (pure), "
+            f"{nmd_blended} blended with WorldCover at the coverage edge."
+        )
 
     by_dem_tile: dict[Path, list[GridCell]] = {}
     dem_unmatched: list[GridCell] = []

@@ -160,6 +160,55 @@ class TestComputeStaticFeaturesFromRasters:
         assert features.forest_fraction == pytest.approx(1.0, abs=0.01)
         assert features.wetland_fraction == pytest.approx(1.0, abs=0.01)
 
+    def test_nmd_partial_coverage_blends_with_worldcover(self, tmp_path):
+        """A cell straddling NMD's coverage edge (part of its fraction
+        window classified, part not) should land *between* the pure-NMD
+        and pure-WorldCover values, proportionally -- not hard-switch to
+        one or the other. A hard cutover here is exactly what drew a
+        visible seam on the map right at NMD's real-world south-to-north
+        rollout edge (~62N as of v2.1)."""
+        pytest.importorskip("pyproj")
+        from pyproj import Transformer
+        import numpy as np
+        import rasterio
+        from rasterio.transform import from_bounds
+
+        bounds = (17.5, 59.0, 18.5, 60.0)
+        (tmp_path / "worldcover").mkdir()
+        (tmp_path / "dem").mkdir()
+        (tmp_path / "nmd").mkdir()
+        _write_uniform_geotiff(tmp_path / "worldcover" / "test.tif", value=self.FOREST_CLASS, bounds=bounds)
+        _write_uniform_geotiff(tmp_path / "dem" / "test.tif", value=100, bounds=bounds)
+
+        cell = GridCell(cell_id="SE_NMD_EDGE", latitude=59.5, longitude=18.0)
+        to_sweref = Transformer.from_crs("EPSG:4326", "EPSG:3006", always_xy=True)
+        cx, cy = to_sweref.transform(cell.longitude, cell.latitude)
+
+        # West half of a window straddling the cell centre is NMD nodata
+        # (not yet produced); east half is class 121 (pine-on-wetland, on
+        # both wc/nmd forest AND wetland).
+        half_width_m, size = 10_000, 400
+        transform = from_bounds(cx - half_width_m, cy - half_width_m, cx + half_width_m, cy + half_width_m, size, size)
+        data = np.zeros((size, size), dtype=np.uint16)
+        data[:, size // 2 :] = 121
+        with rasterio.open(
+            tmp_path / "nmd" / "nmd_test.tif", "w", driver="GTiff", height=size, width=size, count=1,
+            dtype=data.dtype, crs="EPSG:3006", transform=transform,
+        ) as ds:
+            ds.write(data, 1)
+
+        [features] = compute_static_features_from_rasters([cell], tmp_path)
+
+        # Pure WorldCover here is forest=1.0/wetland=0.0. NMD only "sees"
+        # class 121 over its own classified (east) half of the window, so
+        # even NMD's own forest/wetland fraction is ~0.5 there (the nodata
+        # west half doesn't count toward any class) -- blended 50/50 with
+        # WorldCover's forest=1.0 gives ~0.75 forest, ~0.25 wetland. The
+        # exact numbers matter less than landing strictly between the two
+        # pure-source extremes rather than jumping to one of them.
+        assert 0.15 < features.wetland_fraction < 0.85
+        assert 0.55 < features.forest_fraction < 0.95
+
     def test_nmd_nodata_falls_back_to_worldcover(self, tmp_path):
         pytest.importorskip("pyproj")
         from pyproj import Transformer
