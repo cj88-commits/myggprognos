@@ -55,6 +55,26 @@ def _write_uniform_geotiff(path, *, value: int, bounds: tuple[float, float, floa
         ds.write(data, 1)
 
 
+def _write_uniform_nmd_geotiff(path, *, value: int, center_xy: tuple[float, float], half_width_m: float = 20000, size: int = 400):
+    """A tiny synthetic single-band GeoTIFF in NMD's native SWEREF99 TM
+    (EPSG:3006), uniformly filled with `value`, covering a square of
+    `2 * half_width_m` meters around center_xy -- enough to exercise the
+    NMD override path's projected-CRS window reads without real
+    multi-GB source data."""
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_bounds
+
+    cx, cy = center_xy
+    transform = from_bounds(cx - half_width_m, cy - half_width_m, cx + half_width_m, cy + half_width_m, size, size)
+    data = np.full((size, size), value, dtype=np.uint16)
+    with rasterio.open(
+        path, "w", driver="GTiff", height=size, width=size, count=1,
+        dtype=data.dtype, crs="EPSG:3006", transform=transform,
+    ) as ds:
+        ds.write(data, 1)
+
+
 class TestComputeStaticFeaturesFromRasters:
     """Exercises the real (non-placeholder) path against tiny synthetic
     tiles, so the actual windowed-read + fraction/slope logic in
@@ -116,3 +136,51 @@ class TestComputeStaticFeaturesFromRasters:
         # (~200m/pixel over its 30km width), not a claim of sub-pixel
         # precision.
         assert features.distance_to_water_km < 0.5
+
+    def test_nmd_forest_on_wetland_overrides_worldcover(self, tmp_path):
+        pytest.importorskip("pyproj")
+        from pyproj import Transformer
+
+        bounds = (17.5, 59.0, 18.5, 60.0)
+        (tmp_path / "worldcover").mkdir()
+        (tmp_path / "dem").mkdir()
+        (tmp_path / "nmd").mkdir()
+        _write_uniform_geotiff(tmp_path / "worldcover" / "test.tif", value=self.FOREST_CLASS, bounds=bounds)
+        _write_uniform_geotiff(tmp_path / "dem" / "test.tif", value=100, bounds=bounds)
+
+        cell = GridCell(cell_id="SE_WETFOREST", latitude=59.5, longitude=18.0)
+        to_sweref = Transformer.from_crs("EPSG:4326", "EPSG:3006", always_xy=True)
+        cx, cy = to_sweref.transform(cell.longitude, cell.latitude)
+        # NMD class 121 = "Pine forest, on wetland" -- WorldCover alone
+        # (pure "tree cover" above) can't distinguish this from dry forest.
+        _write_uniform_nmd_geotiff(tmp_path / "nmd" / "nmd_test.tif", value=121, center_xy=(cx, cy))
+
+        [features] = compute_static_features_from_rasters([cell], tmp_path)
+
+        assert features.forest_fraction == pytest.approx(1.0, abs=0.01)
+        assert features.wetland_fraction == pytest.approx(1.0, abs=0.01)
+
+    def test_nmd_nodata_falls_back_to_worldcover(self, tmp_path):
+        pytest.importorskip("pyproj")
+        from pyproj import Transformer
+
+        bounds = (17.5, 59.0, 18.5, 60.0)
+        (tmp_path / "worldcover").mkdir()
+        (tmp_path / "dem").mkdir()
+        (tmp_path / "nmd").mkdir()
+        _write_uniform_geotiff(tmp_path / "worldcover" / "test.tif", value=self.FOREST_CLASS, bounds=bounds)
+        _write_uniform_geotiff(tmp_path / "dem" / "test.tif", value=100, bounds=bounds)
+
+        cell = GridCell(cell_id="SE_NMD_NOT_YET_PRODUCED", latitude=59.5, longitude=18.0)
+        to_sweref = Transformer.from_crs("EPSG:4326", "EPSG:3006", always_xy=True)
+        cx, cy = to_sweref.transform(cell.longitude, cell.latitude)
+        # NMD_NODATA_VALUE everywhere -- simulates a cell in NMD's
+        # not-yet-produced region (e.g. far-north mountains today).
+        _write_uniform_nmd_geotiff(tmp_path / "nmd" / "nmd_test.tif", value=0, center_xy=(cx, cy))
+
+        [features] = compute_static_features_from_rasters([cell], tmp_path)
+
+        # Should fall back to the pure-forest WorldCover value, untouched
+        # by the all-nodata NMD tile.
+        assert features.forest_fraction == pytest.approx(1.0, abs=0.01)
+        assert features.wetland_fraction == 0.0

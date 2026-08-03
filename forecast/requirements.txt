@@ -12,3 +12,8 @@ pytest>=8.0
 # data/static/cell_features.json rather than recomputing it -- see forecast.yml.
 # geopandas>=0.14
 # rasterio>=1.3
+
+# Optional, only required for the NMD2023 override path (see
+# static_features.py's module docstring and scripts/download_nmd_data.py) --
+# reprojects cell coordinates from WGS84 into NMD's native SWEREF99 TM.
+# pyproj>=3.6

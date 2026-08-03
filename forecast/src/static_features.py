@@ -1,12 +1,25 @@
 """Static geographic features per forecast cell.
 
-Real features are derived from two free, no-login, publicly-hosted sources
-(both Cloud-Optimized GeoTIFFs on public AWS S3, so no bulk portal download
-or credentials needed -- see scripts/download_static_gis_data.py):
-  * ESA WorldCover 10m 2021 (s3://esa-worldcover) -- land cover, 11 classes
-    including forest ("tree cover"), "herbaceous wetland", "built-up", and
-    "permanent water bodies", which drive forest/wetland/urban/water
-    fraction and distance-to-water directly.
+Real features are derived from three free, no-login, publicly-hosted
+sources:
+  * ESA WorldCover 10m 2021 (s3://esa-worldcover, Cloud-Optimized GeoTIFF)
+    -- land cover, 11 classes including forest ("tree cover"), "herbaceous
+    wetland", "built-up", and "permanent water bodies", which drive
+    forest/wetland/urban/water fraction and distance-to-water directly.
+    Covers all of Sweden but conflates tree-covered wetland (e.g. northern
+    fjallmyrar, sumpskog) into the single "tree cover" class -- see
+    scripts/download_static_gis_data.py.
+  * Nationella Marktackedata (NMD) 2023 v2.x, from Naturvardsverket
+    (geodata.naturvardsverket.se) -- 10m land cover with 54 classes,
+    crucially distinguishing forest-on-wetland from forest-on-firm-ground
+    (by species) and subdividing open wetland into ~15 mire/non-mire
+    types. Used to override the WorldCover-derived fraction for any cell
+    where NMD has real (non-placeholder) coverage; falls back to
+    WorldCover elsewhere. As of v2.1, NMD production has finished southern
+    Sweden (<1% uncovered) but is still rolling out north of ~62N (~19%
+    uncovered) and especially in the far-north mountains (~46%
+    uncovered) -- see scripts/download_nmd_data.py. Single national
+    raster in SWEREF99 TM (EPSG:3006), not WGS84.
   * Copernicus DEM GLO-30 (s3://copernicus-dem-30m) -- 30m elevation, for
     elevation_m and a locally-estimated slope_deg.
 
@@ -48,6 +61,31 @@ WORLDCOVER_FOREST_CLASSES = {10}  # Tree cover
 WORLDCOVER_WETLAND_CLASSES = {90, 95}  # Herbaceous wetland, Mangroves
 WORLDCOVER_URBAN_CLASSES = {50}  # Built-up
 WORLDCOVER_WATER_CLASSES = {80}  # Permanent water bodies
+
+# NMD2023 v2.x class codes (see Bilaga 5 of Naturvardsverket's product
+# description, geodata.naturvardsverket.se/nedladdning/marktacke/NMD2023/).
+# Unlike WorldCover, forest is split by what's underneath it -- "on wetland"
+# classes (121-128, 23) are real tree-covered wetland (e.g. sumpskog,
+# tallmossar) and are counted toward *both* forest_fraction and
+# wetland_fraction, since that's exactly the terrain WorldCover's single
+# "tree cover" class was hiding.
+NMD_FOREST_ON_FIRM_CLASSES = {111, 112, 113, 114, 115, 116, 117, 118}
+NMD_FOREST_ON_WETLAND_CLASSES = {121, 122, 123, 124, 125, 126, 127, 128}
+NMD_ALPINE_TREES_ON_FIRM_CLASSES = {43}
+NMD_ALPINE_TREES_ON_WETLAND_CLASSES = {23}
+NMD_FOREST_CLASSES = (
+    NMD_FOREST_ON_FIRM_CLASSES | NMD_FOREST_ON_WETLAND_CLASSES
+    | NMD_ALPINE_TREES_ON_FIRM_CLASSES | NMD_ALPINE_TREES_ON_WETLAND_CLASSES
+)
+NMD_OPEN_WETLAND_ON_MIRE_CLASSES = {200, 211, 212, 213, 214, 215, 216, 217, 218}
+NMD_OPEN_WETLAND_NOT_ON_MIRE_CLASSES = {221, 222, 223, 224, 225, 226, 227, 228}
+NMD_WETLAND_CLASSES = (
+    NMD_OPEN_WETLAND_ON_MIRE_CLASSES | NMD_OPEN_WETLAND_NOT_ON_MIRE_CLASSES
+    | NMD_FOREST_ON_WETLAND_CLASSES | NMD_ALPINE_TREES_ON_WETLAND_CLASSES
+)
+NMD_URBAN_CLASSES = {51, 52, 53}  # Building, other artificial, road/railway
+NMD_WATER_CLASSES = {61, 62}  # Inland water, marine water
+NMD_NODATA_VALUE = 0  # Not (yet) classified -- see module docstring re. rollout
 
 
 @dataclass(frozen=True)
@@ -229,6 +267,60 @@ def _land_cover_features(ds, lon: float, lat: float) -> tuple[float, float, floa
     return forest, wetland, urban, water, dist_km
 
 
+_NMD_NODATA_FALLBACK_THRESHOLD = 0.5  # cell's fraction window mostly unclassified -> use WorldCover instead
+
+
+def _read_window_projected(ds, x: float, y: float, radius_km: float, out_size: int):
+    """Like _read_window, but for a dataset in a projected (metric) CRS such
+    as NMD's native SWEREF99 TM -- no lon/lat-dependent degree scaling
+    needed, just a square window in the CRS's own meters."""
+    import numpy as np  # noqa: local import
+    from rasterio.enums import Resampling
+    from rasterio.windows import from_bounds
+
+    half_m = radius_km * 1000.0
+    window = from_bounds(x - half_m, y - half_m, x + half_m, y + half_m, transform=ds.transform)
+    arr = ds.read(
+        1,
+        window=window,
+        out_shape=(out_size, out_size),
+        resampling=Resampling.nearest,
+        boundless=True,
+        fill_value=NMD_NODATA_VALUE,
+    )
+    return np.asarray(arr)
+
+
+def _nmd_land_cover_features(ds, x: float, y: float) -> tuple[float, float, float, float, float, float]:
+    """(forest, wetland, urban, water, distance_to_water_km, nodata_fraction)
+    for one cell, sampled directly against NMD's native SWEREF99 TM grid at
+    projected coordinates (x, y). nodata_fraction is the share of the
+    fraction window NMD hasn't classified yet (rollout still in progress,
+    see module docstring) -- callers should fall back to WorldCover above
+    _NMD_NODATA_FALLBACK_THRESHOLD."""
+    import numpy as np
+
+    frac_arr = _read_window_projected(ds, x, y, _FRACTION_RADIUS_KM, _FRACTION_OUT_SIZE)
+    total = frac_arr.size
+    nodata_fraction = float((frac_arr == NMD_NODATA_VALUE).sum()) / total
+    forest = float(np.isin(frac_arr, list(NMD_FOREST_CLASSES)).sum()) / total
+    wetland = float(np.isin(frac_arr, list(NMD_WETLAND_CLASSES)).sum()) / total
+    urban = float(np.isin(frac_arr, list(NMD_URBAN_CLASSES)).sum()) / total
+    water = float(np.isin(frac_arr, list(NMD_WATER_CLASSES)).sum()) / total
+
+    search_arr = _read_window_projected(ds, x, y, _WATER_SEARCH_RADIUS_KM, _WATER_SEARCH_OUT_SIZE)
+    water_mask = np.isin(search_arr, list(NMD_WATER_CLASSES))
+    if water_mask.any():
+        center = (_WATER_SEARCH_OUT_SIZE - 1) / 2
+        rows, cols = np.nonzero(water_mask)
+        km_per_px = (2 * _WATER_SEARCH_RADIUS_KM) / _WATER_SEARCH_OUT_SIZE
+        dist_km = float(np.min(np.hypot((rows - center) * km_per_px, (cols - center) * km_per_px)))
+    else:
+        dist_km = _WATER_SEARCH_RADIUS_KM
+
+    return forest, wetland, urban, water, dist_km, nodata_fraction
+
+
 def _elevation_features(ds, lon: float, lat: float) -> tuple[float, float]:
     """(elevation_m, slope_deg) for one cell."""
     import numpy as np
@@ -321,6 +413,25 @@ def compute_static_features_from_rasters(cells: list[GridCell], static_data_dir:
         with rasterio.open(path) as ds:
             for cell in tile_cells:
                 land_cover_by_cell[cell.cell_id] = _land_cover_features(ds, cell.longitude, cell.latitude)
+
+    # NMD2023 override: optional, higher-detail Sweden-only source (see
+    # module docstring). Where its rollout has reached, it replaces the
+    # WorldCover-derived tuple above; elsewhere the WorldCover value
+    # computed just above stands as the fallback.
+    nmd_tifs = sorted((static_data_dir / "nmd").glob("*.tif")) if (static_data_dir / "nmd").is_dir() else []
+    if nmd_tifs:
+        from pyproj import Transformer
+
+        with rasterio.open(nmd_tifs[0]) as nmd_ds:
+            to_nmd_crs = Transformer.from_crs("EPSG:4326", nmd_ds.crs.to_wkt(), always_xy=True)
+            nmd_used = 0
+            for cell in cells:
+                x, y = to_nmd_crs.transform(cell.longitude, cell.latitude)
+                forest, wetland, urban, water, dist_water, nodata_frac = _nmd_land_cover_features(nmd_ds, x, y)
+                if nodata_frac < _NMD_NODATA_FALLBACK_THRESHOLD:
+                    land_cover_by_cell[cell.cell_id] = (forest, wetland, urban, water, dist_water)
+                    nmd_used += 1
+        print(f"NMD2023 used for {nmd_used}/{len(cells)} cells (WorldCover fallback for the rest).")
 
     by_dem_tile: dict[Path, list[GridCell]] = {}
     dem_unmatched: list[GridCell] = []

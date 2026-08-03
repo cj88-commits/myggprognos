@@ -79,13 +79,17 @@ faithful to the actual calculation, not a plausible-sounding guess.
 - **Not a disease-risk tool.** It says nothing about mosquito-borne disease risk.
 - **Static land-cover data is real, but land-cover classification only approximates mosquito habitat.**
   Forest/wetland/urban/water fraction and elevation come from real satellite/DEM sources (see
-  [Static geographic data](#static-geographic-data)), not placeholders. One real limitation worth knowing:
-  ESA WorldCover's "herbaceous wetland" class requires *open, non-forested* wetland to register — a lot of
-  Sweden's real mire/bog terrain (myrmark) is tree-covered and reads as forest, not wetland, in a satellite
-  land-cover snapshot. The highest wetland_fraction cells nationally do correctly cluster in Norrbotten's
-  fjäll/mire region and known bog complexes like Store Mosse, but a province like Dalarna won't show
-  elevated wetland *on average* just from this feature alone — real seasonal flooding/standing-water
-  dynamics are captured separately, by the weather-derived features, not by this static snapshot.
+  [Static geographic data](#static-geographic-data)), not placeholders. ESA WorldCover's "herbaceous
+  wetland" class requires *open, non-forested* wetland to register — a lot of Sweden's real mire/bog
+  terrain (myrmark) is tree-covered and reads as forest, not wetland, in a plain WorldCover snapshot. Where
+  it's available, NMD2023 (Naturvårdsverket's national land-cover product) overrides this with a proper
+  forest/wetland split, but as of NMD2023 v2.1 its rollout is south-to-north and not yet complete: under 1%
+  of southern Sweden is uncovered, but roughly 19% north of ~62°N and ~46% in the far-north mountains
+  (fjällen/Norrbotten) still falls back to the plain WorldCover value. The highest wetland_fraction cells
+  nationally do correctly cluster in Norrbotten's fjäll/mire region and known bog complexes like Store
+  Mosse, but a province like Dalarna won't show elevated wetland *on average* just from this feature alone —
+  real seasonal flooding/standing-water dynamics are captured separately, by the weather-derived features,
+  not by this static snapshot.
 - **Accuracy declines with forecast horizon** — day 7 is far less reliable than hour 1.
 - **User reports may be biased** (self-selected reporters, uneven geographic coverage) and are only ever
   blended in as a small, capped adjustment on top of the model — see [User reports](#user-reports-1).
@@ -99,7 +103,7 @@ frontend/   React + TypeScript + Vite + MapLibre GL JS + Recharts (both lazy-loa
 forecast/   Python 3.12 pipeline (weather → features → rule-based model → generated JSON), run by GitHub Actions every 6h
 worker/     Cloudflare Worker + D1, a tiny API for user mosquito reports
 data/       static (grid + boundary + real land-cover/elevation features), samples (fixtures), generated (pipeline output)
-scripts/    one-off/maintenance CLIs: prepare_grid, download_static_gis_data, prepare_static_features, run_forecast
+scripts/    one-off/maintenance CLIs: prepare_grid, download_static_gis_data, download_nmd_data, prepare_static_features, run_forecast
 ```
 
 No persistent backend server: the frontend reads pre-computed, gzip-compressed JSON files published as
@@ -185,10 +189,17 @@ python scripts/prepare_grid.py --resolution-km 5
 
 ### Static geographic data
 
-Real GIS source data, both free/no-login/publicly hosted as Cloud-Optimized GeoTIFFs on AWS S3:
-  - [ESA WorldCover 10m 2021](https://esa-worldcover.org/) — land cover (forest, herbaceous wetland,
-    built-up, permanent water bodies among its 11 classes) → `forest_fraction`, `wetland_fraction`,
-    `urban_fraction`, `water_fraction`, `distance_to_water_km`.
+Real GIS source data, all free/no-login:
+  - [ESA WorldCover 10m 2021](https://esa-worldcover.org/) (Cloud-Optimized GeoTIFF on AWS S3) — land cover
+    (forest, herbaceous wetland, built-up, permanent water bodies among its 11 classes) →
+    `forest_fraction`, `wetland_fraction`, `urban_fraction`, `water_fraction`, `distance_to_water_km`.
+    Covers all of Sweden; used everywhere as the baseline/fallback.
+  - [NMD2023](https://geodata.naturvardsverket.se/nedladdning/marktacke/NMD2023/) (Naturvårdsverket's
+    Nationella marktäckedata, single national GeoTIFF, CC0) — 10m land cover with 54 classes, crucially
+    splitting forest into on-wetland vs on-firm-ground (by species) and open wetland into ~15 mire/non-mire
+    types. Overrides the WorldCover-derived fraction wherever NMD has real coverage; see
+    [Limitations](#limitations) for its current south-to-north rollout status. Delivered in SWEREF99 TM
+    (EPSG:3006), reprojected per-cell on read.
   - [Copernicus DEM GLO-30](https://registry.opendata.aws/copernicus-dem/) — 30m elevation →
     `elevation_m`, `slope_deg`.
   - `coastal_exposure` is derived directly from the already-committed `sweden_boundary.geojson`, not a
@@ -198,15 +209,16 @@ To (re)compute `data/static/cell_features.json` after a `grid.json` change:
 
 ```bash
 python scripts/download_static_gis_data.py   # ~4-5GB, only the tiles the current grid actually needs
-pip install rasterio geopandas               # optional extras, commented out in forecast/requirements.txt
+python scripts/download_nmd_data.py          # optional, ~1.2GB download / ~10.85GB on disk
+pip install rasterio geopandas pyproj        # optional extras, commented out in forecast/requirements.txt
 python scripts/prepare_static_features.py --real
 ```
 
-`data/static/worldcover/` and `data/static/dem/` (the downloaded tiles) are git-ignored — only the small
-derived `cell_features.json` (a few MB) is committed. Without `--real`, the script (and the scheduled
-pipeline, only as a fallback if `cell_features.json` is ever missing outright) uses
-`generate_placeholder_static_features()` — deterministic per-cell values seeded from the cell ID and rough
-priors. Clearly a placeholder, not measured data; the committed file is real.
+`data/static/worldcover/`, `data/static/dem/`, and `data/static/nmd/` (the downloaded source rasters) are
+git-ignored — only the small derived `cell_features.json` (a few MB) is committed. Without `--real`, the
+script (and the scheduled pipeline, only as a fallback if `cell_features.json` is ever missing outright)
+uses `generate_placeholder_static_features()` — deterministic per-cell values seeded from the cell ID and
+rough priors. Clearly a placeholder, not measured data; the committed file is real.
 
 ## Licence considerations
 
@@ -539,10 +551,11 @@ is set yet (would need a real 1200×630 PNG under `frontend/public/`); see the c
 
 ## Future improvements
 
-- **Higher-resolution wetland detection** — ESA WorldCover's "herbaceous wetland" class only registers
-  *open* wetland; a lot of real Swedish mire terrain is tree-covered and reads as forest instead (see
-  [Limitations](#limitations)). A forestry/peatland-specific layer (e.g. SLU's wetland forest mapping) would
-  catch this where WorldCover alone doesn't.
+- **Complete the NMD2023 rollout coverage** — the NMD override (see [Static geographic data](#static-geographic-data))
+  already fixes WorldCover's tree-covered-wetland blind spot wherever it has data, but Naturvårdsverket's
+  production is still rolling out north of ~62°N (see [Limitations](#limitations)). Re-running
+  `scripts/download_nmd_data.py` + `prepare_static_features.py --real` periodically will pick up more
+  coverage for free as new NMD versions are published, with no code changes needed.
 - **Bilingual UI completion** — `frontend/src/i18n/en.ts` currently covers only a representative subset of
   keys as a proof of the locale structure; filling it in fully (plus a visible language switcher in the UI)
   would make English a real second locale rather than a partial fallback.

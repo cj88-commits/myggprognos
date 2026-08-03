@@ -10,8 +10,15 @@ license-encumbered but impractical to commit). To use real data:
      WorldCover (land cover) and Copernicus DEM GLO-30 (elevation) tiles
      that actually cover the current grid.json into data/static/worldcover/
      and data/static/dem/ (both free, no login, public AWS S3).
-  2. Install the optional GIS extras: pip install rasterio geopandas
-  3. Run: python scripts/prepare_static_features.py --real
+  2. Optionally, run scripts/download_nmd_data.py too -- downloads
+     Naturvardsverket's NMD2023 national raster (data/static/nmd/), which
+     overrides the WorldCover-derived values with higher-detail data
+     (forest split by what's underneath it, richer wetland subtypes)
+     wherever NMD's rollout has reached; falls back to WorldCover
+     elsewhere. See static_features.py's module docstring for coverage
+     caveats.
+  3. Install the optional GIS extras: pip install rasterio geopandas pyproj
+  4. Run: python scripts/prepare_static_features.py --real
 
 Without --real (the default), this script generates deterministic
 placeholder features so the pipeline is runnable without any downloads --
