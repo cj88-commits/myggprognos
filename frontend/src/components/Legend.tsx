@@ -9,6 +9,17 @@ const CONFIDENCE_STOPS: { key: "low" | "medium" | "high"; color: string }[] = [
   { key: "high", color: "#2e8b4f" },
 ];
 
+// Every layer key needs its own title -- previously only "confidence" had
+// one, and everything else (including population_potential and
+// biting_activity) silently fell back to "Myggrisk (0-100)", so the
+// legend kept saying "mosquito risk" even while showing e.g. Bettaktivitet.
+const LEGEND_TITLE_KEYS: Record<LayerKey, I18nKey> = {
+  risk: "legend.riskTitle",
+  population_potential: "legend.populationTitle",
+  biting_activity: "legend.activityTitle",
+  confidence: "legend.confidenceTitle",
+};
+
 export function Legend({ layer }: { layer: LayerKey }) {
   const { t } = useI18n();
 
@@ -17,7 +28,7 @@ export function Legend({ layer }: { layer: LayerKey }) {
       ? CONFIDENCE_STOPS.map((s) => ({ label: t(`confidence.${s.key}` as I18nKey), color: s.color }))
       : RISK_CATEGORIES.map((c) => ({ label: t(`risk.category.${c.key}` as I18nKey), color: c.color }));
 
-  const title = layer === "confidence" ? t("legend.confidenceTitle") : t("legend.riskTitle");
+  const title = t(LEGEND_TITLE_KEYS[layer]);
 
   return (
     <details className="legend">

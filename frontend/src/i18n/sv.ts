@@ -48,6 +48,8 @@ const sv = {
   "map.ariaLabel": "Karta över myggrisk i Sverige",
 
   "legend.riskTitle": "Myggrisk (0–100)",
+  "legend.populationTitle": "Populationspotential (0–100)",
+  "legend.activityTitle": "Bettaktivitet (0–100)",
   "legend.confidenceTitle": "Prognosens konfidens",
 
   "risk.category.very_low": "Mycket låg",
