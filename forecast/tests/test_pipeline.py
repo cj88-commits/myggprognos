@@ -2,12 +2,40 @@ from __future__ import annotations
 
 import gzip
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
+from feature_engineering import SWEDEN_TZ
 from grid import GridCell
 from history_cache import INCREMENTAL_PAST_DAYS
-from pipeline import HISTORY_DAYS_BACK, run_pipeline
+from pipeline import HISTORY_DAYS_BACK, _local_daypart_target, run_pipeline
 from weather import SyntheticWeatherProvider
+
+
+def test_local_daypart_target_resolves_cest_correctly():
+    # 2026-07-15 falls in CEST (UTC+2) -- 20:00 local ("evening") is 18:00 UTC.
+    target = _local_daypart_target(date(2026, 7, 15), 20)
+    assert target == datetime(2026, 7, 15, 18, tzinfo=timezone.utc)
+
+
+def test_local_daypart_target_resolves_cet_correctly():
+    # 2026-01-15 falls in CET (UTC+1) -- 20:00 local is 19:00 UTC, not 20:00.
+    target = _local_daypart_target(date(2026, 1, 15), 20)
+    assert target == datetime(2026, 1, 15, 19, tzinfo=timezone.utc)
+
+
+def test_local_daypart_target_night_hour_stays_on_intended_local_calendar_day():
+    # Regression for the bug where 23:00 UTC (meant to be 23:00 local) was
+    # actually 01:00 the *next* local day in summer.
+    target = _local_daypart_target(date(2026, 7, 15), 23)
+    local = target.astimezone(SWEDEN_TZ)
+    assert local.date() == date(2026, 7, 15)
+    assert local.hour == 23
+
+
+def test_local_daypart_target_morning_hour_is_not_shifted_to_wrong_side_of_midday():
+    target = _local_daypart_target(date(2026, 7, 15), 8)
+    local = target.astimezone(SWEDEN_TZ)
+    assert local.hour == 8
 
 
 def test_run_pipeline_sample_mode_produces_expected_assets(tmp_path):
@@ -54,6 +82,82 @@ def test_run_pipeline_sample_mode_produces_expected_assets(tmp_path):
     assert cells[0]["cell_id"] in series_shard
     assert len(series_shard[cells[0]["cell_id"]]["daily"]) == 7
     assert len(series_shard[cells[0]["cell_id"]]["hourly"]) == 49
+
+
+def test_run_pipeline_publishes_the_three_forecast_product_fields(tmp_path):
+    """Myggläge / Myggrisk idag / Myggrisk just nu -- see docs/model-audit-after.md."""
+    run_pipeline(
+        sample=True,
+        output_dir=tmp_path,
+        run_time=datetime(2026, 7, 29, 6, tzinfo=timezone.utc),
+    )
+
+    with gzip.open(tmp_path / "daily" / "2026-07-29.json.gz") as fh:
+        daily = json.load(fh)
+    for record in daily:
+        # "Myggrisk idag": daily_peak_risk must equal the peak daypart's own
+        # risk (i.e. the max across morning/afternoon/evening/night), not a
+        # separately-computed value that could silently disagree.
+        daypart_risks = [d["risk"] for d in record["dayparts"].values()]
+        assert record["daily_peak_risk"] == max(daypart_risks)
+        assert record["daily_peak_risk"] == record["risk"]
+        # "Myggläge": mosquito_abundance is population_potential, unaffected
+        # by which daypart happens to be selected.
+        assert record["mosquito_abundance"] == record["population_potential"]
+        assert record["daily_peak_local_time"] in ("08:00", "14:00", "20:00", "23:00")
+        assert 0.0 <= record["activity_modifier"]
+        assert 0.0 <= record["exposure_modifier"]
+
+    with gzip.open(tmp_path / "hourly" / "2026-07-29T06.json.gz") as fh:
+        hourly = json.load(fh)
+    for record in hourly:
+        # "Myggrisk just nu": current_risk is this specific hour's own risk.
+        assert record["current_risk"] == record["risk"]
+        assert record["mosquito_abundance"] == record["population_potential"]
+
+
+def test_run_pipeline_publishes_combination_and_threshold_config_in_manifest(tmp_path):
+    """The frontend must read these from the manifest rather than holding
+    an independently-drifting copy -- see docs/model-audit-before.md #5."""
+    run_pipeline(
+        sample=True,
+        output_dir=tmp_path,
+        run_time=datetime(2026, 7, 29, 6, tzinfo=timezone.utc),
+    )
+    manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+
+    assert set(manifest["combination"]) == {
+        "activity_floor", "activity_weight", "exposure_floor", "exposure_weight", "scale",
+    }
+    assert len(manifest["thresholds"]["abundance"]) == 4
+    assert manifest["thresholds"]["abundance"] == sorted(manifest["thresholds"]["abundance"])
+
+
+def test_run_pipeline_lowers_confidence_per_cell_for_placeholder_static_data(tmp_path):
+    """docs/model-audit-before.md bug #2: a cell individually falling back
+    to placeholder static features (missing from cell_features.json) must
+    NOT inherit the rest of the run's real-data confidence bonus. SE_STHLM
+    is a known real entry in data/samples/static_features.json;
+    SE_NOT_IN_STATIC_FILE deliberately isn't, forcing the missing-cell
+    placeholder path for just that one cell within an otherwise
+    static_placeholder=False run."""
+    cells = [
+        GridCell(cell_id="SE_STHLM", latitude=59.33, longitude=18.06, region="Svealand"),
+        GridCell(cell_id="SE_NOT_IN_STATIC_FILE", latitude=59.33, longitude=18.06, region="Svealand"),
+    ]
+    run_pipeline(
+        sample=True,
+        static_placeholder=False,
+        output_dir=tmp_path,
+        cells_override=cells,
+        run_time=datetime(2026, 7, 29, 6, tzinfo=timezone.utc),
+    )
+
+    with gzip.open(tmp_path / "hourly" / "2026-07-29T06.json.gz") as fh:
+        hourly = json.load(fh)
+    by_id = {r["cell_id"]: r for r in hourly}
+
+    assert by_id["SE_NOT_IN_STATIC_FILE"]["confidence"] < by_id["SE_STHLM"]["confidence"]
 
 
 def test_run_pipeline_does_not_rewrite_unchanged_files(tmp_path):

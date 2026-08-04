@@ -25,6 +25,11 @@ describe("parseUrlState", () => {
     expect(state.daypart).toBe("evening");
     expect(state.hour).toBeUndefined();
   });
+
+  it("maps the legacy 'risk' layer value (pre-products) to daily_peak_risk", () => {
+    const state = parseUrlState("?layer=risk");
+    expect(state.layer).toBe("daily_peak_risk");
+  });
 });
 
 describe("serializeUrlState", () => {
@@ -56,7 +61,7 @@ describe("serializeUrlState", () => {
       hour: null,
       daypart: "night",
       activity: "general",
-      layer: "risk",
+      layer: "current_risk",
     });
     expect(search).toContain("daypart=night");
     expect(search).not.toContain("hour=");

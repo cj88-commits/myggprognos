@@ -25,6 +25,7 @@ from zoneinfo import ZoneInfo
 
 import numpy as np
 
+from solar import compute_solar_times
 from static_features import StaticFeatures
 from weather import HourlyWeather
 
@@ -78,6 +79,14 @@ class FeatureSet:
     # rainfall, terrain drainage, and nearby wetlands/lakes).
     standing_water_persistence: float
 
+    # Rainfall-to-population emergence lag (see _emergence_potential): how
+    # many newly-emerged adult mosquitoes are plausible RIGHT NOW, given
+    # both how much rain fell in each of the last few weeks AND how much
+    # accumulated warmth has passed since each of those rain events --
+    # distinct from precipitation_Xd_mm, which says nothing about whether
+    # that rain has had time (and warmth) to actually produce adults yet.
+    emergence_potential: float
+
     # Wind
     wind_speed_current_ms: float | None
     wind_speed_forecast_ms: float | None
@@ -96,6 +105,16 @@ class FeatureSet:
     hour_of_day: int
     daypart: str
     seasonal_suitability: float
+
+    # Solar timing (see solar.py) -- local decimal hours (e.g. 21.5 =
+    # 21:30), used by model.py's activity curve to place the dawn/dusk
+    # activity peaks relative to the actual sunrise/sunset for this cell's
+    # latitude and date, instead of a fixed clock hour. None precisely
+    # when is_polar_day/is_polar_night is True (no sunrise/sunset that day).
+    sunrise_hour_local: float | None
+    sunset_hour_local: float | None
+    is_polar_day: bool
+    is_polar_night: bool
 
     # Static
     forest_fraction: float
@@ -135,6 +154,13 @@ def _mean(values: list[float | None]) -> float | None:
     if not valid:
         return None
     return sum(valid) / len(valid)
+
+
+def clamp(value: float, minimum: float, maximum: float) -> float:
+    """Local copy of model.py::clamp -- feature_engineering.py must not
+    import from model.py (model.py already imports FeatureSet from here;
+    the reverse would be circular)."""
+    return max(minimum, min(maximum, value))
 
 
 def _parse_times(times: list[str]) -> list[datetime]:
@@ -258,6 +284,15 @@ def seasonal_suitability_curve(day_of_year: int, latitude: float) -> float:
     return math.exp(-0.5 * (diff / width) ** 2)
 
 
+def _site_persistence_factor(slope_deg: float, wetland_fraction: float, water_body_density: float) -> float:
+    """How well this terrain holds water once it's there -- independent of
+    *when* rain fell (timing is handled separately by _emergence_potential
+    below). Steeper slope drains faster; nearby wetlands/lakes hold water
+    longer once it arrives."""
+    drainage_factor = max(0.15, min(1.0, 1.0 - (slope_deg or 0.0) / 15.0))
+    return clamp((0.4 + 0.6 * wetland_fraction) * (0.5 + 0.5 * water_body_density) * drainage_factor, 0.0, 1.0)
+
+
 def _standing_water_persistence(
     precipitation_3d_mm: float,
     precipitation_7d_mm: float,
@@ -275,14 +310,82 @@ def _standing_water_persistence(
         + 0.3 * max(0.0, precipitation_7d_mm - precipitation_3d_mm)
         + 0.1 * max(0.0, precipitation_14d_mm - precipitation_7d_mm)
     )
-    drainage_factor = max(0.15, min(1.0, 1.0 - (slope_deg or 0.0) / 15.0))
-    value = (
-        (recent_weighted_rain / 40.0)
-        * (0.4 + 0.6 * wetland_fraction)
-        * (0.5 + 0.5 * water_body_density)
-        * drainage_factor
-    )
+    value = (recent_weighted_rain / 40.0) * _site_persistence_factor(slope_deg, wetland_fraction, water_body_density)
     return round(max(0.0, min(1.0, value)), 4)
+
+
+# Rough, deliberately NOT species-specific accumulated-warmth threshold for
+# egg-to-adult mosquito development (temperate Aedes/Culex development is
+# commonly modelled in the 40-80 degree-day range above a ~10C base
+# temperature in entomological literature; 60 is a defensible round
+# midpoint, not a validated figure for any one species -- see the "Rainfall
+# lag" section of the final report for this caveat stated explicitly).
+GDD_TO_ADULT_C = 60.0
+
+# A single rain event of this size or more is treated as "fully meaningful"
+# for emergence purposes; larger events aren't weighted proportionally
+# harder (there's a diminishing-returns ceiling on how much one storm can
+# matter), consistent with population_potential's other bell/sigmoid terms
+# already being bounded rather than unbounded linear responses.
+EMERGENCE_RAIN_REFERENCE_MM = 25.0
+
+
+def _development_progress(accumulated_gdd: float) -> float:
+    """0 (just laid, no development yet) to 1 (fully developed to adult),
+    based on growing-degree-days accumulated since the rain event that
+    likely created the breeding site -- NOT calendar days. Warmer weather
+    accumulates degree-days faster (faster development); freezing or very
+    cold conditions accumulate almost none (little/no development), the
+    same poikilothermic-insect assumption already used for
+    growing_degree_days elsewhere in this module."""
+    if GDD_TO_ADULT_C <= 0:
+        return 1.0
+    return max(0.0, min(1.0, accumulated_gdd / GDD_TO_ADULT_C))
+
+
+def _emergence_potential(
+    rain_0_2d_mm: float,
+    rain_3_6d_mm: float,
+    rain_7_14d_mm: float,
+    rain_15_21d_mm: float,
+    gdd_since_0_2d: float,
+    gdd_since_3_6d: float,
+    gdd_since_7_14d: float,
+    gdd_since_15_21d: float,
+    site_persistence: float,
+) -> float:
+    """Transparent, rule-based "how many newly-emerged adult mosquitoes are
+    plausible right now" signal: each rainfall-lag bucket's contribution is
+    weighted by how far its resulting larvae have actually developed given
+    the REAL temperature history since (not by calendar time alone), then
+    scaled by how well this site holds water at all.
+
+        emergence_potential = lagged_wetness_event x development_progress x site_persistence
+
+    This directly addresses the reported issue that heavy rain *today*
+    should not read as an immediate adult-population signal: rain in the
+    0-2-day bucket almost always has near-zero accumulated degree-days
+    (_development_progress ~ 0) this soon after falling, regardless of how
+    much rain fell, so it contributes almost nothing here -- while the same
+    rain, once it's had a week or two of warm weather to develop, moves
+    into the 7-14d/15-21d buckets and contributes fully. Each bucket's
+    "how long ago" is approximated by its own outer boundary (e.g. the
+    7-14 day bucket uses degree-days accumulated over the last 14 days) --
+    a coarse but transparent choice, not a precise per-event simulation.
+    """
+    buckets = (
+        (rain_0_2d_mm, gdd_since_0_2d),
+        (rain_3_6d_mm, gdd_since_3_6d),
+        (rain_7_14d_mm, gdd_since_7_14d),
+        (rain_15_21d_mm, gdd_since_15_21d),
+    )
+    weighted = sum(
+        min(rain_mm, EMERGENCE_RAIN_REFERENCE_MM) * _development_progress(gdd)
+        for rain_mm, gdd in buckets
+    )
+    max_possible = EMERGENCE_RAIN_REFERENCE_MM * len(buckets)
+    raw = weighted / max_possible if max_possible else 0.0
+    return round(max(0.0, min(1.0, raw * site_persistence)), 4)
 
 
 def compute_features(
@@ -331,6 +434,13 @@ def compute_features(
         mean_14d = _range_mean(rolling.temp_cumsum, rolling.temp_count_cumsum, idx, 336, total_len)
 
         growing_degree_days = _range_sum(rolling.gdd_cumsum, idx, 336, total_len) / 24.0
+
+        def gdd_sum(hours_back: int) -> float:
+            return round(_range_sum(rolling.gdd_cumsum, idx, hours_back, total_len) / 24.0, 2)
+
+        gdd_3d = gdd_sum(24 * 3)
+        gdd_7d = gdd_sum(24 * 7)
+        gdd_21d = gdd_sum(24 * 21)
 
         night_start = max(0, idx - 23)
         night_temps = [
@@ -408,6 +518,14 @@ def compute_features(
         gdd_valid = [v for v in gdd_window if v is not None]
         growing_degree_days = sum(max(0.0, v - development_base_temperature_c) for v in gdd_valid) / 24.0
 
+        def gdd_sum(hours_back: int) -> float:
+            vals = _window(parsed_times, weather.temperature_2m, target_time, hours_back)
+            return round(sum(max(0.0, v - development_base_temperature_c) for v in vals if v is not None) / 24.0, 2)
+
+        gdd_3d = gdd_sum(24 * 3)
+        gdd_7d = gdd_sum(24 * 7)
+        gdd_21d = gdd_sum(24 * 21)
+
         night_temps = [
             v
             for t, v in zip(parsed_times, weather.temperature_2m)
@@ -480,6 +598,17 @@ def compute_features(
     hours = daylight_hours(weather.latitude, day_of_year)
     seasonal = seasonal_suitability_curve(day_of_year, weather.latitude)
 
+    solar = compute_solar_times(weather.latitude, weather.longitude, local_time.date())
+
+    def _local_decimal_hour(dt: datetime | None) -> float | None:
+        if dt is None:
+            return None
+        local_dt = dt.astimezone(SWEDEN_TZ)
+        return local_dt.hour + local_dt.minute / 60.0
+
+    sunrise_hour_local = _local_decimal_hour(solar.sunrise_utc)
+    sunset_hour_local = _local_decimal_hour(solar.sunset_utc)
+
     standing_water_persistence = _standing_water_persistence(
         precipitation_3d_mm=precip_3d,
         precipitation_7d_mm=precip_7d,
@@ -487,6 +616,23 @@ def compute_features(
         slope_deg=static.slope_deg,
         wetland_fraction=static.wetland_fraction,
         water_body_density=static.water_body_density,
+    )
+
+    # Rainfall-to-population emergence lag (see _emergence_potential
+    # docstring): buckets are derived from the already-computed cumulative
+    # precip_Xd_mm sums by subtraction, and from gdd_Xd sums the same way,
+    # anchored at each bucket's outer day boundary.
+    site_persistence = _site_persistence_factor(static.slope_deg, static.wetland_fraction, static.water_body_density)
+    emergence_potential = _emergence_potential(
+        rain_0_2d_mm=precip_3d,
+        rain_3_6d_mm=max(0.0, precip_7d - precip_3d),
+        rain_7_14d_mm=max(0.0, precip_14d - precip_7d),
+        rain_15_21d_mm=max(0.0, precip_21d - precip_14d),
+        gdd_since_0_2d=gdd_3d,
+        gdd_since_3_6d=gdd_7d,
+        gdd_since_7_14d=growing_degree_days,
+        gdd_since_15_21d=gdd_21d,
+        site_persistence=site_persistence,
     )
 
     return FeatureSet(
@@ -514,6 +660,7 @@ def compute_features(
         wet_ground=wet_ground,
         soil_moisture_is_fallback=soil_is_fallback,
         standing_water_persistence=standing_water_persistence,
+        emergence_potential=emergence_potential,
         wind_speed_current_ms=current_wind,
         wind_speed_forecast_ms=wind_forecast,
         wind_gusts_ms=current_gusts,
@@ -527,6 +674,10 @@ def compute_features(
         hour_of_day=local_time.hour,
         daypart=_daypart(local_time.hour),
         seasonal_suitability=round(seasonal, 4),
+        sunrise_hour_local=sunrise_hour_local,
+        sunset_hour_local=sunset_hour_local,
+        is_polar_day=solar.is_polar_day,
+        is_polar_night=solar.is_polar_night,
         forest_fraction=static.forest_fraction,
         wetland_fraction=static.wetland_fraction,
         urban_fraction=static.urban_fraction,

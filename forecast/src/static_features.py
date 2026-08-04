@@ -100,6 +100,18 @@ class StaticFeatures:
     slope_deg: float
     coastal_exposure: float
     water_body_density: float
+    # True for generate_placeholder_static_features() output, False for real
+    # raster-derived values. Previously there was no way to tell the two
+    # apart once written to cell_features.json -- a cell that individually
+    # fell back to placeholder generation (e.g. missing from the file, or
+    # outside downloaded raster tile coverage) was indistinguishable from
+    # one with real GIS data, so pipeline.py's confidence calculation used
+    # one dataset-wide flag instead of the per-cell truth (see
+    # docs/model-audit-before.md bug #2). Defaults to False so a
+    # pre-existing cell_features.json written before this field existed
+    # loads as "real" -- correct for this repo's current committed data,
+    # which was fully raster-derived with no missing-cell fallback.
+    is_placeholder: bool = False
 
 
 def _seeded_unit(cell_id: str, salt: str) -> float:
@@ -170,6 +182,7 @@ def generate_placeholder_static_features(cell: GridCell) -> StaticFeatures:
         slope_deg=slope_deg,
         coastal_exposure=coastal_exposure,
         water_body_density=water_body_density,
+        is_placeholder=True,
     )
 
 

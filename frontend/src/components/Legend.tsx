@@ -1,32 +1,45 @@
 import { useI18n } from "../i18n";
 import type { I18nKey } from "../i18n/types";
-import { RISK_CATEGORIES } from "../lib/riskModel";
+import { abundanceCategory, DATA_QUALITY_CATEGORIES, DEFAULT_ABUNDANCE_THRESHOLDS, RISK_CATEGORIES } from "../lib/riskModel";
 import type { LayerKey } from "../types/forecast";
-
-const CONFIDENCE_STOPS: { key: "low" | "medium" | "high"; color: string }[] = [
-  { key: "low", color: "#d9432e" },
-  { key: "medium", color: "#f2c94c" },
-  { key: "high", color: "#2e8b4f" },
-];
 
 // Every layer key needs its own title -- previously only "confidence" had
 // one, and everything else (including population_potential and
 // biting_activity) silently fell back to "Myggrisk (0-100)", so the
-// legend kept saying "mosquito risk" even while showing e.g. Bettaktivitet.
+// legend kept saying "mosquito risk" even while showing e.g. Myggaktivitet.
+// The legend must change meaning according to the selected product (daily
+// peak vs. right-now vs. abundance are different claims on the same 0-100
+// scale) -- see the "forecast products" iteration.
 const LEGEND_TITLE_KEYS: Record<LayerKey, I18nKey> = {
-  risk: "legend.riskTitle",
+  daily_peak_risk: "legend.dailyPeakTitle",
+  current_risk: "legend.currentRiskTitle",
   population_potential: "legend.populationTitle",
   biting_activity: "legend.activityTitle",
   confidence: "legend.confidenceTitle",
 };
 
-export function Legend({ layer }: { layer: LayerKey }) {
+export function Legend({ layer, abundanceThresholds }: { layer: LayerKey; abundanceThresholds?: number[] }) {
   const { t } = useI18n();
 
+  // "Prognosunderlag" (data quality) uses its own four qualitative bands --
+  // deliberately not a continuous 0-100 scale, since the point is "how much
+  // to trust this", not a precise measurement (see riskModel.ts). Myggläge
+  // uses its own 0-100 bounds (docs/model-audit-after.md) so its legend
+  // swatches, unlike the shared risk ones, aren't at RISK_CATEGORIES' fixed
+  // 0/20/40/60/80 -- built from the same edges abundanceCategory() uses via
+  // its midpoint, so the legend's five colors always match what a real
+  // score in that band would actually render as.
+  const edges = abundanceThresholds ?? DEFAULT_ABUNDANCE_THRESHOLDS;
+  const abundanceMidpoints = [edges[0] / 2, (edges[0] + edges[1]) / 2, (edges[1] + edges[2]) / 2, (edges[2] + edges[3]) / 2, edges[3] + 5];
   const stops =
     layer === "confidence"
-      ? CONFIDENCE_STOPS.map((s) => ({ label: t(`confidence.${s.key}` as I18nKey), color: s.color }))
-      : RISK_CATEGORIES.map((c) => ({ label: t(`risk.category.${c.key}` as I18nKey), color: c.color }));
+      ? DATA_QUALITY_CATEGORIES.map((c) => ({ label: t(`dataQuality.${c.key}` as I18nKey), color: c.color }))
+      : layer === "population_potential"
+        ? abundanceMidpoints.map((v) => {
+            const c = abundanceCategory(v, edges);
+            return { label: t(`risk.category.${c.key}` as I18nKey), color: c.color };
+          })
+        : RISK_CATEGORIES.map((c) => ({ label: t(`risk.category.${c.key}` as I18nKey), color: c.color }));
 
   const title = t(LEGEND_TITLE_KEYS[layer]);
 

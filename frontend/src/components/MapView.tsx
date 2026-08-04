@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import maplibregl, { GeoJSONSource, Map as MaplibreMap, Marker, Popup } from "maplibre-gl";
 import { fetchJsonGz } from "../lib/fetchJsonGz";
 import { useI18n } from "../i18n";
-import { RISK_COLOR_STOPS } from "../lib/riskModel";
+import { abundanceColorStops, DATA_QUALITY_CATEGORIES, DEFAULT_ABUNDANCE_THRESHOLDS, RISK_COLOR_STOPS } from "../lib/riskModel";
 import type { CellRecord, LayerKey } from "../types/forecast";
 
 const SWEDEN_CENTER: [number, number] = [17.5, 62.5];
@@ -28,15 +28,33 @@ const RISK_COLOR_EXPRESSION: maplibregl.ExpressionSpecification = [
   ...RISK_COLOR_STOPS.flatMap((stop) => [stop.value, stop.color] as [number, string]),
 ];
 
+// Matches riskModel.ts::DATA_QUALITY_CATEGORIES (low/limited/good/very_good)
+// so the map, legend and location panel all agree on what "good data
+// quality" looks like -- this used to be its own independent 4-stop ramp.
 const CONFIDENCE_COLOR_EXPRESSION: maplibregl.ExpressionSpecification = [
   "interpolate",
   ["linear"],
   ["get", "value"],
-  0, "#d9432e",
-  40, "#f2c94c",
-  70, "#2e8b4f",
-  100, "#1c4a32",
+  ...DATA_QUALITY_CATEGORIES.flatMap((c) => [c.min, c.color] as [number, string]),
 ];
+
+// Myggläge (population_potential) needed its own ramp -- reusing the
+// standard 0/20/40/60/80/100 risk stops meant the map could visually never
+// reach orange/red, since real abundance tops out well short of 100 (see
+// docs/model-audit-after.md). Built per-render from manifest.thresholds
+// (falls back to DEFAULT_ABUNDANCE_THRESHOLDS for an older manifest) rather
+// than a fixed module-level constant, since the edges are backend-owned.
+function colorExpressionForLayer(
+  layer: LayerKey,
+  abundanceThresholds: number[] | undefined
+): maplibregl.ExpressionSpecification {
+  if (layer === "confidence") return CONFIDENCE_COLOR_EXPRESSION;
+  if (layer === "population_potential") {
+    const stops = abundanceColorStops(abundanceThresholds ?? DEFAULT_ABUNDANCE_THRESHOLDS);
+    return ["interpolate", ["linear"], ["get", "value"], ...stops.flatMap((s) => [s.value, s.color] as [number, string])];
+  }
+  return RISK_COLOR_EXPRESSION;
+}
 
 // Precomputed once by scripts/prepare_cell_geometry.py: each grid cell's
 // actual ~5km square, clipped to (Sweden's real land shape minus its
@@ -82,16 +100,22 @@ export interface MapViewProps {
   layer: LayerKey;
   selectedLat: number;
   selectedLon: number;
+  selectedCellId: string | null;
+  abundanceThresholds?: number[];
   onSelectLocation: (lat: number, lon: number) => void;
   userLocation: { lat: number; lon: number } | null;
   reportMarkers?: { lat: number; lon: number; severity: number }[];
 }
+
+const EMPTY_FEATURE_COLLECTION: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
 
 export function MapView({
   valuesByCellId,
   layer,
   selectedLat,
   selectedLon,
+  selectedCellId,
+  abundanceThresholds,
   onSelectLocation,
   userLocation,
   reportMarkers = [],
@@ -103,6 +127,7 @@ export function MapView({
   const selectedMarkerRef = useRef<Marker | null>(null);
   const userMarkerRef = useRef<Marker | null>(null);
   const reportMarkersRef = useRef<Marker[]>([]);
+  const hoveredIdRef = useRef<string | number | null>(null);
   const [cellGeometry, setCellGeometry] = useState<CellGeometryEntry[]>([]);
 
   // Static (doesn't change per forecast run) -- fetched once, independent
@@ -180,7 +205,13 @@ export function MapView({
         attribButton.closest(".maplibregl-ctrl-attrib")?.classList.toggle("myggprognos-attrib-expanded");
       });
 
-      map.addSource("cells", { type: "geojson", data: featureCollection });
+      // promoteId lets MapLibre use each feature's own cell_id as its
+      // feature-state id (cell_ids are unique strings) instead of requiring
+      // a separate numeric `id` on every one of the ~18-23k features --
+      // feature-state is how the hover highlight below is driven without
+      // rebuilding/restyling the whole layer on every mousemove.
+      map.addSource("cells", { type: "geojson", data: featureCollection, promoteId: "cell_id" });
+      map.addSource("selected-cell", { type: "geojson", data: EMPTY_FEATURE_COLLECTION });
 
       // Insert below water so any real map labels/road lines that sit on
       // top of water (rare, but the style declares them later) still
@@ -197,12 +228,51 @@ export function MapView({
           type: "fill",
           source: "cells",
           paint: {
-            "fill-color": layer === "confidence" ? CONFIDENCE_COLOR_EXPRESSION : RISK_COLOR_EXPRESSION,
-            "fill-opacity": ["case", ["<", ["get", "value"], 0], 0.15, 0.8],
+            "fill-color": colorExpressionForLayer(layer, abundanceThresholds),
+            "fill-opacity": [
+              "case",
+              ["<", ["get", "value"], 0],
+              0.15,
+              ["boolean", ["feature-state", "hover"], false],
+              0.95,
+              0.8,
+            ],
           },
         },
         beforeId
       );
+
+      // Hovered-cell outline (item 8: "hover feedback") -- width is 0 for
+      // every feature except whichever one currently has feature-state
+      // hover=true, so this is a single always-present layer rather than
+      // one added/removed per mouse move.
+      map.addLayer(
+        {
+          id: "cells-hover-outline",
+          type: "line",
+          source: "cells",
+          paint: {
+            "line-color": "#ffffff",
+            "line-width": ["case", ["boolean", ["feature-state", "hover"], false], 2, 0],
+            "line-opacity": 0.9,
+          },
+        },
+        beforeId
+      );
+
+      // Selected-cell outline (item 8: "the selected forecast cell should
+      // be obvious") -- the exact ~5km polygon the shown numbers describe,
+      // not just a point marker at the click location.
+      map.addLayer({
+        id: "selected-cell-outline",
+        type: "line",
+        source: "selected-cell",
+        paint: {
+          "line-color": "#2b6fd6",
+          "line-width": 3,
+          "line-opacity": 0.95,
+        },
+      });
 
       map.on("click", "cells-heat", (e) => {
         const feature = e.features?.[0];
@@ -216,8 +286,26 @@ export function MapView({
           onSelectLocation(e.lngLat.lat, e.lngLat.lng);
         }
       });
-      map.on("mouseenter", "cells-heat", () => (map.getCanvas().style.cursor = "pointer"));
-      map.on("mouseleave", "cells-heat", () => (map.getCanvas().style.cursor = ""));
+      map.on("mousemove", "cells-heat", (e) => {
+        map.getCanvas().style.cursor = "pointer";
+        const feature = e.features?.[0];
+        const nextId = feature?.id ?? null;
+        if (hoveredIdRef.current === nextId) return;
+        if (hoveredIdRef.current !== null) {
+          map.setFeatureState({ source: "cells", id: hoveredIdRef.current }, { hover: false });
+        }
+        if (nextId !== null) {
+          map.setFeatureState({ source: "cells", id: nextId }, { hover: true });
+        }
+        hoveredIdRef.current = nextId;
+      });
+      map.on("mouseleave", "cells-heat", () => {
+        map.getCanvas().style.cursor = "";
+        if (hoveredIdRef.current !== null) {
+          map.setFeatureState({ source: "cells", id: hoveredIdRef.current }, { hover: false });
+          hoveredIdRef.current = null;
+        }
+      });
 
       readyRef.current = true;
     });
@@ -250,11 +338,7 @@ export function MapView({
         source.setData(featureCollection);
       }
       if (map.getLayer("cells-heat")) {
-        map.setPaintProperty(
-          "cells-heat",
-          "fill-color",
-          layer === "confidence" ? CONFIDENCE_COLOR_EXPRESSION : RISK_COLOR_EXPRESSION
-        );
+        map.setPaintProperty("cells-heat", "fill-color", colorExpressionForLayer(layer, abundanceThresholds));
       }
     };
     if (readyRef.current) {
@@ -262,26 +346,59 @@ export function MapView({
     } else {
       map.once("load", applyUpdate);
     }
-  }, [featureCollection, layer]);
+  }, [featureCollection, layer, abundanceThresholds]);
 
-  // Selected-location marker + fly-to.
+  // Selected-cell outline: the single real grid-cell polygon the panel's
+  // numbers actually describe (item 8), redrawn on a dedicated 1-feature
+  // source whenever the selection or geometry changes.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const entry = selectedCellId ? cellGeometry.find((c) => c.cell_id === selectedCellId) : undefined;
+    const data: GeoJSON.FeatureCollection = entry
+      ? { type: "FeatureCollection", features: [{ type: "Feature", geometry: entry.geometry, properties: {} }] }
+      : EMPTY_FEATURE_COLLECTION;
+    const applyUpdate = () => {
+      const source = map.getSource("selected-cell") as GeoJSONSource | undefined;
+      source?.setData(data);
+    };
+    if (readyRef.current) applyUpdate();
+    else map.once("load", applyUpdate);
+  }, [selectedCellId, cellGeometry]);
+
+  // Selected-location marker + fly-to. The marker also plays a brief "ping"
+  // (item 8: visible tap/click feedback, useful on mobile where there's no
+  // hover state to rely on) -- a transient ring appended and removed around
+  // the persistent marker dot rather than replaying a CSS animation on the
+  // dot itself, so the marker's own box-shadow/position never flickers.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
+    function playPing(dot: HTMLElement) {
+      const ring = document.createElement("div");
+      ring.className = "marker-ping-ring";
+      dot.appendChild(ring);
+      window.setTimeout(() => ring.remove(), 700);
+    }
+
     if (!selectedMarkerRef.current) {
       const el = document.createElement("div");
+      el.className = "marker-dot";
       el.style.width = "16px";
       el.style.height = "16px";
       el.style.borderRadius = "50%";
       el.style.border = "3px solid white";
       el.style.background = "#2b6fd6";
       el.style.boxShadow = "0 0 0 2px rgba(0,0,0,0.35)";
+      el.style.position = "relative";
       selectedMarkerRef.current = new maplibregl.Marker({ element: el }).setLngLat([selectedLon, selectedLat]);
       if (readyRef.current) selectedMarkerRef.current.addTo(map);
       else map.once("load", () => selectedMarkerRef.current?.addTo(map));
+      playPing(el);
     } else {
       selectedMarkerRef.current.setLngLat([selectedLon, selectedLat]);
+      playPing(selectedMarkerRef.current.getElement());
     }
   }, [selectedLat, selectedLon]);
 

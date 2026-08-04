@@ -31,7 +31,7 @@ from config import (
 )
 from confidence import compute_confidence
 from explanation import format_factor_strings, generate_explanation
-from feature_engineering import compute_features, precompute_rolling_windows
+from feature_engineering import SWEDEN_TZ, compute_features, precompute_rolling_windows
 from grid import GridCell, generate_sample_grid, load_grid, save_grid
 from history_cache import (
     INCREMENTAL_PAST_DAYS,
@@ -64,6 +64,31 @@ from weather import HourlyWeather, OpenMeteoProvider, SyntheticWeatherProvider, 
 logger = logging.getLogger("mosquito_forecast.pipeline")
 
 DAYPART_REPRESENTATIVE_HOUR = {"morning": 8, "afternoon": 14, "evening": 20, "night": 23}
+
+# Above this share of the grid using placeholder (not real GIS-derived)
+# static features on a real (non-sample) run, add a manifest warning -- see
+# "Production guard" below.
+STATIC_PLACEHOLDER_WARN_FRACTION = 0.05
+
+
+def _local_daypart_target(target_date: date, local_hour: int) -> datetime:
+    """The UTC instant corresponding to `local_hour`:00 Swedish clock time
+    on `target_date`.
+
+    Bug fixed here (see docs/model-audit-before.md #6): this used to attach
+    `tzinfo=timezone.utc` directly to `local_hour`, i.e. treat a Swedish
+    wall-clock hour as if it were already UTC. In CEST (summer, UTC+2) that
+    silently shifted "evening" (meant to be ~20:00 local) to 22:00 local,
+    and "night" (23:00 local) to 01:00 local the *next* calendar day --
+    worst exactly during mosquito season. Building a naive local datetime,
+    attaching Europe/Stockholm via `replace` (not `astimezone`, which would
+    reinterpret already-correct UTC), then converting to UTC is the
+    standard zoneinfo pattern and resolves CET/CEST correctly for the given
+    date automatically.
+    """
+    local_naive = datetime(target_date.year, target_date.month, target_date.day, local_hour)
+    local_dt = local_naive.replace(tzinfo=SWEDEN_TZ)
+    return local_dt.astimezone(timezone.utc)
 HISTORY_DAYS_BACK = 21
 # Cells per fetch+cache-checkpoint chunk (~1000 cells = ~20 batches at the
 # default WEATHER_BATCH_SIZE). GitHub-hosted runners have a hard 6-hour job
@@ -95,6 +120,14 @@ def _record_from_score(cell_id: str, features, score, confidence_result) -> dict
         "exposure": score.exposure,
         "base_exposure_fraction": round(score.exposure_terms.get("base_exposure_fraction", 0.5), 4),
         "confidence": confidence_result.confidence,
+        # Clearer-named aliases for the "forecast products" iteration (see
+        # docs/model-audit-after.md) -- published alongside the original
+        # fields above rather than replacing them, per the backward-
+        # compatibility requirement (existing frontend/consumers keep
+        # working unchanged; new consumers can read the clearer names).
+        "mosquito_abundance": score.population_potential,
+        "activity_modifier": score.activity_modifier,
+        "exposure_modifier": score.exposure_modifier,
     }
 
 
@@ -270,8 +303,18 @@ def run_pipeline(
             )
             score = compute_score(features, config, "general")
             horizon_hours = max(0.0, (target - run_time).total_seconds() / 3600.0)
-            confidence_result = compute_confidence(features, score, config, horizon_hours, is_placeholder)
+            # Per-cell, not the dataset-wide `is_placeholder` flag alone --
+            # a cell that individually fell back to a placeholder (missing
+            # from cell_features.json, outside raster tile coverage) must
+            # not inherit the rest of the run's real-data confidence bonus
+            # (see docs/model-audit-before.md bug #2).
+            cell_is_placeholder = is_placeholder or static_map[cell.cell_id].is_placeholder
+            confidence_result = compute_confidence(features, score, config, horizon_hours, cell_is_placeholder)
             record = _record_from_score(cell.cell_id, features, score, confidence_result)
+            # "Myggrisk just nu" -- this hourly record already IS the
+            # selected-hour risk; current_risk is just a clearer-named alias
+            # of the same value (see docs/model-audit-after.md).
+            record["current_risk"] = record["risk"]
             records.append(record)
             series_by_cell[cell.cell_id]["hourly"].append(record)
         hour_label = target.strftime("%Y-%m-%dT%H")
@@ -301,14 +344,15 @@ def run_pipeline(
                 continue
             dayparts = {}
             for part, hour in DAYPART_REPRESENTATIVE_HOUR.items():
-                target = datetime(target_date.year, target_date.month, target_date.day, hour, tzinfo=timezone.utc)
+                target = _local_daypart_target(target_date, hour)
                 features = compute_features(
                     static_map[cell.cell_id], weather, target, config.development_base_temperature_c,
                     rolling=rolling_by_cell.get(cell.cell_id),
                 )
                 score = compute_score(features, config, "general")
                 horizon_hours = max(0.0, (target - run_time).total_seconds() / 3600.0)
-                confidence_result = compute_confidence(features, score, config, horizon_hours, is_placeholder)
+                cell_is_placeholder = is_placeholder or static_map[cell.cell_id].is_placeholder
+                confidence_result = compute_confidence(features, score, config, horizon_hours, cell_is_placeholder)
                 dayparts[part] = {
                     **_record_from_score(cell.cell_id, features, score, confidence_result),
                     "features": features,
@@ -328,6 +372,20 @@ def run_pipeline(
                 "exposure": peak["exposure"],
                 "base_exposure_fraction": peak["base_exposure_fraction"],
                 "confidence": peak["confidence"],
+                # "Myggrisk idag" / "Myggläge" product fields -- aliases of
+                # the peak daypart's own values above, published under
+                # clearer names (see docs/model-audit-after.md). Kept
+                # alongside (not instead of) the original fields for
+                # backward compatibility.
+                "daily_peak_risk": peak["risk"],
+                "mosquito_abundance": peak["mosquito_abundance"],
+                "activity_modifier": peak["activity_modifier"],
+                "exposure_modifier": peak["exposure_modifier"],
+                # Representative LOCAL time for the peak daypart (e.g.
+                # "20:00") -- honestly reflects the model's daypart-level
+                # (not true hourly) resolution over the 7-day horizon,
+                # rather than implying more precision than it has.
+                "daily_peak_local_time": f"{DAYPART_REPRESENTATIVE_HOUR[peak_part]:02d}:00",
                 "peak_period": peak_part,
                 "dayparts": {
                     p: {k: v for k, v in d.items() if k not in ("features", "score")}
@@ -362,6 +420,29 @@ def run_pipeline(
         logger.error("Sanity checks failed, aborting publish: %s", exc)
         raise
 
+    # Production guard (docs/model-audit-before.md bug #2 / static-data
+    # audit): a real (non-sample) run relying heavily on per-cell
+    # placeholder static features would previously publish silently at
+    # full confidence. This doesn't block publishing -- individual
+    # placeholder cells already get correctly lowered per-cell confidence
+    # above -- but a WIDESPREAD placeholder fallback (most of the grid
+    # missing from cell_features.json, or outside raster tile coverage)
+    # means something is wrong with the static-data pipeline itself and
+    # deserves a loud, visible warning, not just quietly-lower per-cell
+    # numbers nobody notices in aggregate.
+    if not sample:
+        placeholder_count = sum(1 for f in static_map.values() if f.is_placeholder)
+        placeholder_fraction = placeholder_count / len(static_map) if static_map else 0.0
+        if placeholder_fraction > STATIC_PLACEHOLDER_WARN_FRACTION:
+            warnings.append(
+                f"{placeholder_count}/{len(static_map)} cells ({placeholder_fraction:.0%}) are using placeholder "
+                f"static features, not real GIS data -- check cell_features.json coverage and raster tile downloads."
+            )
+            logger.warning(
+                "%d/%d cells (%.0f%%) using placeholder static features -- exceeds %.0f%% warning threshold",
+                placeholder_count, len(static_map), placeholder_fraction * 100, STATIC_PLACEHOLDER_WARN_FRACTION * 100,
+            )
+
     write_cells_file(cells, static_map, output_dir)
     series_files = write_series_shards(series_by_cell, output_dir)
 
@@ -388,6 +469,11 @@ def run_pipeline(
         activities=config.activities,
         warnings=warnings,
         series_files=series_files,
+        combination=config.combination_params or {
+            "activity_floor": 0.30, "activity_weight": 0.70,
+            "exposure_floor": 0.75, "exposure_weight": 0.50, "scale": 105,
+        },
+        thresholds={"abundance": config.abundance_thresholds},
     )
 
     logger.info("Pipeline complete: %d cells, %d daily files, %d hourly files", len(cells), len(daily_files), len(hourly_files))

@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import pytest
 from feature_engineering import compute_features, daylight_hours, seasonal_suitability_curve
 from model import (
+    _daypart_activity_curve,
     bell_curve,
     clamp,
     compute_biting_activity,
@@ -150,6 +151,142 @@ def test_final_risk_is_zero_when_all_components_are_zero(sample_static, syntheti
     })
     result = compute_score(zeroed, model_config, "general")
     assert result.biting_activity < 10.0
+
+
+def test_exposure_no_longer_uses_wetland_fraction_or_water_body_density(sample_static, synthetic_weather, model_config):
+    """docs/model-audit-after.md #1-2: wetland_fraction and
+    water_body_density already drive population_potential; exposure must
+    no longer reuse them as if they were independent evidence."""
+    features = _features_at(sample_static, synthetic_weather, 14, model_config)
+    low_wetland = features.__class__(**{**features.__dict__, "wetland_fraction": 0.0, "water_body_density": 0.0})
+    high_wetland = features.__class__(**{**features.__dict__, "wetland_fraction": 0.9, "water_body_density": 0.9})
+
+    low_exposure, _ = compute_exposure(low_wetland, model_config, activity_multiplier=1.0)
+    high_exposure, _ = compute_exposure(high_wetland, model_config, activity_multiplier=1.0)
+
+    assert low_exposure == pytest.approx(high_exposure)
+
+
+def test_exposure_still_responds_to_forest_urban_and_water_proximity(sample_static, synthetic_weather, model_config):
+    features = _features_at(sample_static, synthetic_weather, 14, model_config)
+    sheltered = features.__class__(**{**features.__dict__, "forest_fraction": 0.9, "urban_fraction": 0.0})
+    exposed_urban = features.__class__(**{**features.__dict__, "forest_fraction": 0.0, "urban_fraction": 0.9})
+
+    sheltered_exposure, _ = compute_exposure(sheltered, model_config, activity_multiplier=1.0)
+    urban_exposure, _ = compute_exposure(exposed_urban, model_config, activity_multiplier=1.0)
+
+    assert sheltered_exposure > urban_exposure
+
+
+def test_final_risk_stays_within_0_100_for_extreme_component_combinations(sample_static, synthetic_weather, model_config):
+    features = _features_at(sample_static, synthetic_weather, 20, model_config)
+    for temp, wind, humidity in [(-20, 0, 10), (35, 0.1, 95), (23, 15, 50), (10, 3, 40)]:
+        extreme = features.__class__(**{
+            **features.__dict__,
+            "current_temperature_c": temp, "wind_speed_current_ms": wind, "humidity_current_pct": humidity,
+        })
+        result = compute_score(extreme, model_config, "general")
+        assert 0.0 <= result.final_risk <= 100.0
+
+
+def test_moderate_population_is_not_crushed_to_near_zero_by_midday_activity(sample_static, synthetic_weather, model_config):
+    """Regression for the reported problem (docs/model-audit-before.md
+    Example B): a real, moderate population signal combined with
+    suppressed midday activity used to collapse toward zero under the old
+    plain three-way product. Directly exercises compute_score's population/
+    activity_modifier/exposure_modifier combination (not just bounds)."""
+    features = _features_at(sample_static, synthetic_weather, 13, model_config)
+    moderate_population = features.__class__(**{
+        **features.__dict__,
+        "mean_temperature_14d_c": 16.0, "precipitation_14d_mm": 40.0,
+        # emergence_potential (not precipitation_14d_mm directly) is what
+        # population_potential's rainfall term now reads -- see
+        # docs/model-audit-after.md "Rainfall lag". A high, already-
+        # developed emergence signal is what "real, moderate-to-good
+        # population" means under the new model.
+        "emergence_potential": 0.8,
+        "wetland_fraction": 0.3, "current_temperature_c": 14.0, "wind_speed_current_ms": 7.0,
+    })
+    result = compute_score(moderate_population, model_config, "general")
+    if result.population_potential >= 40.0:
+        # A moderate-or-better population signal should read as more than
+        # a token amount of risk even when activity is suppressed --
+        # under the old formula this case produced final_risk well under 20.
+        assert result.final_risk > 15.0
+
+
+def test_very_low_activity_still_meaningfully_reduces_current_nuisance(sample_static, synthetic_weather, model_config):
+    features = _features_at(sample_static, synthetic_weather, 14, model_config)
+    calm_warm = features.__class__(**{**features.__dict__, "wind_speed_current_ms": 1.0, "current_temperature_c": 22.0})
+    cold_windy = features.__class__(**{**features.__dict__, "wind_speed_current_ms": 12.0, "current_temperature_c": 3.0})
+
+    high = compute_score(calm_warm, model_config, "general")
+    low = compute_score(cold_windy, model_config, "general")
+
+    assert low.final_risk < high.final_risk
+    assert low.activity_modifier < high.activity_modifier
+
+
+def test_exposure_modifier_adjusts_but_does_not_dominate_final_risk(sample_static, synthetic_weather, model_config):
+    features = _features_at(sample_static, synthetic_weather, 14, model_config)
+    near_water = features.__class__(**{**features.__dict__, "distance_to_water_km": 0.1})
+    far_from_water = features.__class__(**{**features.__dict__, "distance_to_water_km": 20.0})
+
+    near = compute_score(near_water, model_config, "general")
+    far = compute_score(far_from_water, model_config, "general")
+
+    assert near.final_risk >= far.final_risk
+    # exposure_modifier's configured range (floor + weight <= 1.25) bounds
+    # how much exposure alone can swing the result -- it must not act as a
+    # second population-style gate.
+    if far.final_risk > 0:
+        assert near.final_risk / far.final_risk < 2.0
+
+
+def test_daypart_activity_curve_peaks_near_actual_sunset_not_a_fixed_clock_hour():
+    """Malmo (early sunset ~20:00 local in early spring) vs a hypothetical
+    far-later sunset (23:00, as in a Swedish summer) -- the dusk peak must
+    track the given sunrise/sunset, not a hardcoded 21:00."""
+    early_sunset_activity_by_hour = {
+        h: _daypart_activity_curve(h, sunrise_hour_local=7.0, sunset_hour_local=20.0, is_polar_day=False, is_polar_night=False)
+        for h in range(24)
+    }
+    late_sunset_activity_by_hour = {
+        h: _daypart_activity_curve(h, sunrise_hour_local=4.0, sunset_hour_local=23.0, is_polar_day=False, is_polar_night=False)
+        for h in range(24)
+    }
+    early_peak_hour = max(early_sunset_activity_by_hour, key=early_sunset_activity_by_hour.get)
+    late_peak_hour = max(late_sunset_activity_by_hour, key=late_sunset_activity_by_hour.get)
+    assert early_peak_hour < late_peak_hour
+    assert 18 <= early_peak_hour <= 20
+    assert 22 <= late_peak_hour <= 23
+
+
+def test_daypart_activity_curve_is_bounded_for_all_solar_conditions():
+    scenarios = [
+        (12.0, 5.0, 21.0, False, False),
+        (0.5, None, None, True, False),  # midnight sun
+        (12.0, None, None, False, True),  # polar night
+        (23.9, 0.2, 23.7, False, False),  # sunset/sunrise both near midnight
+    ]
+    for hour, sunrise, sunset, is_day, is_night in scenarios:
+        value = _daypart_activity_curve(hour, sunrise, sunset, is_day, is_night)
+        assert 0.0 <= value <= 1.0
+
+
+def test_daypart_activity_curve_midnight_sun_has_muted_but_nonzero_cycle():
+    """No true dusk/dawn transition, but not perfectly flat either --
+    still a mild midday dip relative to the rest of the day."""
+    midday = _daypart_activity_curve(13.0, None, None, is_polar_day=True, is_polar_night=False)
+    evening = _daypart_activity_curve(21.0, None, None, is_polar_day=True, is_polar_night=False)
+    assert 0.0 < midday < evening
+
+
+def test_daypart_activity_curve_polar_night_is_flat_and_moderate():
+    a = _daypart_activity_curve(3.0, None, None, is_polar_day=False, is_polar_night=True)
+    b = _daypart_activity_curve(15.0, None, None, is_polar_day=False, is_polar_night=True)
+    assert a == b
+    assert 0.0 < a < 1.0
 
 
 def test_daylight_hours_longer_in_summer_than_winter():

@@ -17,10 +17,26 @@ export const DEFAULT_STATE: AppState = {
   hour: null,
   daypart: "afternoon",
   activity: "general",
-  layer: "risk",
+  // "Myggrisk idag" (today's peak, not whichever hour happens to be
+  // selected) is now the default map product -- see App.tsx `usesPeakData`.
+  layer: "daily_peak_risk",
 };
 
-const VALID_LAYERS: LayerKey[] = ["risk", "population_potential", "biting_activity", "confidence"];
+const VALID_LAYERS: LayerKey[] = [
+  "daily_peak_risk",
+  "current_risk",
+  "population_potential",
+  "biting_activity",
+  "confidence",
+];
+
+// A bookmarked/shared URL from before this iteration may still carry the
+// old single "risk" layer key (which meant "whatever hour is selected,
+// including page-load-hour") -- treat it as the closest new equivalent
+// rather than silently ignoring the whole `layer` param.
+const LEGACY_LAYER_ALIASES: Record<string, LayerKey> = {
+  risk: "daily_peak_risk",
+};
 
 export function parseUrlState(search: string): Partial<AppState> {
   const params = new URLSearchParams(search);
@@ -48,7 +64,8 @@ export function parseUrlState(search: string): Partial<AppState> {
   const activity = params.get("activity");
   if (activity) result.activity = activity;
 
-  const layer = params.get("layer") as LayerKey | null;
+  const rawLayer = params.get("layer");
+  const layer = (rawLayer && LEGACY_LAYER_ALIASES[rawLayer]) || (rawLayer as LayerKey | null);
   if (layer && VALID_LAYERS.includes(layer)) result.layer = layer;
 
   return result;

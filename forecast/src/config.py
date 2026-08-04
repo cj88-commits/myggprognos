@@ -118,6 +118,8 @@ class ModelConfig:
     population_weights: dict[str, float] = field(default_factory=dict)
     activity_params: dict[str, float] = field(default_factory=dict)
     exposure_params: dict[str, float] = field(default_factory=dict)
+    combination_params: dict[str, float] = field(default_factory=dict)
+    abundance_thresholds: list[float] = field(default_factory=lambda: [28.0, 38.0, 48.0, 58.0])
     activities: dict[str, float] = field(default_factory=dict)
     confidence_weights: dict[str, float] = field(default_factory=dict)
     report_adjustment: dict[str, Any] = field(default_factory=dict)
@@ -138,6 +140,8 @@ class ModelConfig:
             population_weights=model.get("population_weights", {}),
             activity_params=model.get("activity", {}),
             exposure_params=model.get("exposure", {}),
+            combination_params=model.get("combination", {}),
+            abundance_thresholds=raw.get("thresholds", {}).get("abundance", [28.0, 38.0, 48.0, 58.0]),
             activities=raw.get("activities", {}),
             confidence_weights=raw.get("confidence", {}),
             report_adjustment=raw.get("report_adjustment", {}),

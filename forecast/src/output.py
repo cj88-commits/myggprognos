@@ -165,6 +165,8 @@ def write_manifest(
     warnings: list[str] | None = None,
     series_files: list[str] | None = None,
     series_shard_count: int = DEFAULT_SERIES_SHARD_COUNT,
+    combination: dict[str, float] | None = None,
+    thresholds: dict[str, list[float]] | None = None,
 ) -> Path:
     manifest = {
         "generated_at": generated_at,
@@ -180,6 +182,17 @@ def write_manifest(
         "warnings": warnings or [],
         "series_files": series_files or [],
         "series_shard_count": series_shard_count,
+        # The exact combination constants model.py::compute_score used for
+        # this run (see model.yaml `combination:`) -- published so the
+        # frontend's client-side re-derivation (for a different activity
+        # profile) reads them from here instead of holding an independent,
+        # potentially-drifting hardcoded copy (see docs/model-audit-before.md
+        # #8 and #5 on backend/frontend duplication risk).
+        "combination": combination or {},
+        # Category-band boundaries per product (see model.yaml `thresholds:`)
+        # -- published so the frontend never holds an independently-
+        # drifting copy of what counts as "high" abundance vs. "high" risk.
+        "thresholds": thresholds or {},
     }
     path = out_dir / "manifest.json"
     path.parent.mkdir(parents=True, exist_ok=True)

@@ -28,6 +28,15 @@ def test_placeholder_features_differ_by_cell_id():
     assert a != b
 
 
+def test_placeholder_features_are_marked_as_placeholder():
+    """docs/model-audit-before.md bug #2: a placeholder-generated cell must
+    be distinguishable from a real-data one so confidence isn't computed as
+    if it were real (see pipeline.py's per-cell is_placeholder lookup)."""
+    cell = GridCell(cell_id="SE_ABC", latitude=59.3, longitude=18.0)
+    features = generate_placeholder_static_features(cell)
+    assert features.is_placeholder is True
+
+
 def test_urban_fraction_high_near_stockholm_center():
     stockholm = GridCell(cell_id="SE_CITY", latitude=59.3293, longitude=18.0686)
     remote = GridCell(cell_id="SE_REMOTE", latitude=64.0, longitude=19.0)
@@ -116,6 +125,8 @@ class TestComputeStaticFeaturesFromRasters:
         assert features.elevation_m == pytest.approx(100.0, abs=0.5)
         # A perfectly flat synthetic DEM should read as ~0 slope.
         assert features.slope_deg == pytest.approx(0.0, abs=0.5)
+        # Real raster-derived data, not a placeholder.
+        assert features.is_placeholder is False
 
     def test_uniform_water_tile_reports_zero_distance(self, tmp_path):
         bounds = (17.5, 59.0, 18.5, 60.0)

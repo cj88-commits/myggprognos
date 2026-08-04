@@ -93,3 +93,38 @@ export function nearestCell(cells: CellRecord[], lat: number, lon: number): Cell
   }
   return best;
 }
+
+const EARTH_RADIUS_KM = 6371;
+
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(a));
+}
+
+export interface NearestPlaceResult {
+  place: PlaceRecord;
+  distanceKm: number;
+}
+
+// Used as a friendlier fallback label than raw coordinates when a user taps
+// the map without going through search (item 8: users should always
+// understand what area/place they've selected). Only ~300 named places
+// cover all of Sweden, so a straight linear scan per click is cheap and a
+// spatial index would be overkill.
+export function nearestPlace(places: PlaceRecord[], lat: number, lon: number): NearestPlaceResult | null {
+  if (places.length === 0) return null;
+  let best = places[0];
+  let bestDist = haversineKm(lat, lon, best.latitude, best.longitude);
+  for (const place of places) {
+    const dist = haversineKm(lat, lon, place.latitude, place.longitude);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = place;
+    }
+  }
+  return { place: best, distanceKm: bestDist };
+}
