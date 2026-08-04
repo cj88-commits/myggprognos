@@ -1,0 +1,20 @@
+{
+  "grid_cell_count": 23194,
+  "cell_features_entry_count": 23194,
+  "cells_missing_from_cell_features_json": 0,
+  "cells_recorded_as_placeholder_in_cell_features_json": 0,
+  "placeholder_cells_total": 0,
+  "real_data_cells_total": 23194,
+  "placeholder_fraction": 0.0,
+  "raster_source_tiles_present": {
+    "forest_fraction / wetland_fraction / urban_fraction / water_fraction / distance_to_water_km": {
+      "worldcover": true,
+      "nmd": true
+    },
+    "elevation_m / slope_deg": {
+      "dem": true
+    }
+  },
+  "sample_missing_cell_ids": [],
+  "sample_recorded_placeholder_cell_ids": []
+}

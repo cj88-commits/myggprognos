@@ -1,36 +1,21 @@
 {
-  "generated_at": "2026-08-03T19:45:37Z",
+  "generated_at": "2026-08-04T10:10:54Z",
   "model_version": "0.1.0",
-  "forecast_start": "2026-08-03",
-  "forecast_end": "2026-08-09",
-  "hourly_until": "2026-08-05T19:00:00Z",
+  "forecast_start": "2026-08-04",
+  "forecast_end": "2026-08-10",
+  "hourly_until": "2026-08-06T10:00:00Z",
   "cell_count": 23194,
   "data_quality": "normal",
   "daily_files": [
-    "daily/2026-08-03.json.gz",
     "daily/2026-08-04.json.gz",
     "daily/2026-08-05.json.gz",
     "daily/2026-08-06.json.gz",
     "daily/2026-08-07.json.gz",
     "daily/2026-08-08.json.gz",
-    "daily/2026-08-09.json.gz"
+    "daily/2026-08-09.json.gz",
+    "daily/2026-08-10.json.gz"
   ],
   "hourly_files": [
-    "hourly/2026-08-03T19.json.gz",
-    "hourly/2026-08-03T20.json.gz",
-    "hourly/2026-08-03T21.json.gz",
-    "hourly/2026-08-03T22.json.gz",
-    "hourly/2026-08-03T23.json.gz",
-    "hourly/2026-08-04T00.json.gz",
-    "hourly/2026-08-04T01.json.gz",
-    "hourly/2026-08-04T02.json.gz",
-    "hourly/2026-08-04T03.json.gz",
-    "hourly/2026-08-04T04.json.gz",
-    "hourly/2026-08-04T05.json.gz",
-    "hourly/2026-08-04T06.json.gz",
-    "hourly/2026-08-04T07.json.gz",
-    "hourly/2026-08-04T08.json.gz",
-    "hourly/2026-08-04T09.json.gz",
     "hourly/2026-08-04T10.json.gz",
     "hourly/2026-08-04T11.json.gz",
     "hourly/2026-08-04T12.json.gz",
@@ -64,7 +49,22 @@
     "hourly/2026-08-05T16.json.gz",
     "hourly/2026-08-05T17.json.gz",
     "hourly/2026-08-05T18.json.gz",
-    "hourly/2026-08-05T19.json.gz"
+    "hourly/2026-08-05T19.json.gz",
+    "hourly/2026-08-05T20.json.gz",
+    "hourly/2026-08-05T21.json.gz",
+    "hourly/2026-08-05T22.json.gz",
+    "hourly/2026-08-05T23.json.gz",
+    "hourly/2026-08-06T00.json.gz",
+    "hourly/2026-08-06T01.json.gz",
+    "hourly/2026-08-06T02.json.gz",
+    "hourly/2026-08-06T03.json.gz",
+    "hourly/2026-08-06T04.json.gz",
+    "hourly/2026-08-06T05.json.gz",
+    "hourly/2026-08-06T06.json.gz",
+    "hourly/2026-08-06T07.json.gz",
+    "hourly/2026-08-06T08.json.gz",
+    "hourly/2026-08-06T09.json.gz",
+    "hourly/2026-08-06T10.json.gz"
   ],
   "activities": {
     "general": 1.0,
@@ -206,5 +206,20 @@
     "series/126.json.gz",
     "series/127.json.gz"
   ],
-  "series_shard_count": 128
+  "series_shard_count": 128,
+  "combination": {
+    "activity_floor": 0.3,
+    "activity_weight": 0.7,
+    "exposure_floor": 0.75,
+    "exposure_weight": 0.5,
+    "scale": 105
+  },
+  "thresholds": {
+    "abundance": [
+      28,
+      38,
+      48,
+      58
+    ]
+  }
 }

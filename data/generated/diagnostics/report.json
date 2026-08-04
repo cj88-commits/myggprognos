@@ -1,0 +1,415 @@
+{
+  "generated_at": "2026-08-04T10:10:54Z",
+  "cell_count": 23194,
+  "daily": [
+    {
+      "date": "2026-08-04",
+      "n_cells": 23194,
+      "mean_risk": 21.4,
+      "median_risk": 22.9,
+      "category_pct": {
+        "very_low": 37.7,
+        "low": 62.2,
+        "moderate": 0.1,
+        "high": 0.0,
+        "very_high": 0.0
+      },
+      "region_mean_risk": {
+        "Gotaland": 27.8,
+        "Svealand": 25.1,
+        "Norrland": 15.3
+      },
+      "abundance_category_pct": {
+        "very_low": 24.0,
+        "low": 55.0,
+        "moderate": 20.9,
+        "high": 0.1,
+        "very_high": 0.0
+      },
+      "mean_abundance": 31.8
+    },
+    {
+      "date": "2026-08-05",
+      "n_cells": 23194,
+      "mean_risk": 21.4,
+      "median_risk": 21.5,
+      "category_pct": {
+        "very_low": 43.7,
+        "low": 56.0,
+        "moderate": 0.3,
+        "high": 0.0,
+        "very_high": 0.0
+      },
+      "region_mean_risk": {
+        "Gotaland": 28.5,
+        "Svealand": 25.7,
+        "Norrland": 14.7
+      },
+      "abundance_category_pct": {
+        "very_low": 29.3,
+        "low": 50.9,
+        "moderate": 19.7,
+        "high": 0.1,
+        "very_high": 0.0
+      },
+      "mean_abundance": 30.4
+    },
+    {
+      "date": "2026-08-06",
+      "n_cells": 23194,
+      "mean_risk": 17.6,
+      "median_risk": 18.1,
+      "category_pct": {
+        "very_low": 61.9,
+        "low": 38.1,
+        "moderate": 0.0,
+        "high": 0.0,
+        "very_high": 0.0
+      },
+      "region_mean_risk": {
+        "Gotaland": 19.4,
+        "Svealand": 20.7,
+        "Norrland": 14.9
+      },
+      "abundance_category_pct": {
+        "very_low": 21.8,
+        "low": 52.5,
+        "moderate": 25.6,
+        "high": 0.1,
+        "very_high": 0.0
+      },
+      "mean_abundance": 32.8
+    },
+    {
+      "date": "2026-08-07",
+      "n_cells": 23194,
+      "mean_risk": 18.3,
+      "median_risk": 17.3,
+      "category_pct": {
+        "very_low": 65.1,
+        "low": 34.9,
+        "moderate": 0.0,
+        "high": 0.0,
+        "very_high": 0.0
+      },
+      "region_mean_risk": {
+        "Gotaland": 22.2,
+        "Svealand": 21.1,
+        "Norrland": 14.3
+      },
+      "abundance_category_pct": {
+        "very_low": 14.5,
+        "low": 36.4,
+        "moderate": 48.8,
+        "high": 0.4,
+        "very_high": 0.0
+      },
+      "mean_abundance": 36.1
+    },
+    {
+      "date": "2026-08-08",
+      "n_cells": 23194,
+      "mean_risk": 24.2,
+      "median_risk": 25.5,
+      "category_pct": {
+        "very_low": 23.9,
+        "low": 76.1,
+        "moderate": 0.0,
+        "high": 0.0,
+        "very_high": 0.0
+      },
+      "region_mean_risk": {
+        "Gotaland": 24.3,
+        "Svealand": 26.7,
+        "Norrland": 22.9
+      },
+      "abundance_category_pct": {
+        "very_low": 14.2,
+        "low": 36.5,
+        "moderate": 48.7,
+        "high": 0.6,
+        "very_high": 0.0
+      },
+      "mean_abundance": 36.2
+    },
+    {
+      "date": "2026-08-09",
+      "n_cells": 23194,
+      "mean_risk": 20.0,
+      "median_risk": 20.2,
+      "category_pct": {
+        "very_low": 48.0,
+        "low": 52.0,
+        "moderate": 0.0,
+        "high": 0.0,
+        "very_high": 0.0
+      },
+      "region_mean_risk": {
+        "Gotaland": 22.6,
+        "Svealand": 20.6,
+        "Norrland": 17.9
+      },
+      "abundance_category_pct": {
+        "very_low": 13.2,
+        "low": 34.7,
+        "moderate": 51.2,
+        "high": 0.9,
+        "very_high": 0.0
+      },
+      "mean_abundance": 36.7
+    },
+    {
+      "date": "2026-08-10",
+      "n_cells": 23194,
+      "mean_risk": 15.0,
+      "median_risk": 15.4,
+      "category_pct": {
+        "very_low": 93.3,
+        "low": 6.7,
+        "moderate": 0.0,
+        "high": 0.0,
+        "very_high": 0.0
+      },
+      "region_mean_risk": {
+        "Gotaland": 17.6,
+        "Svealand": 15.2,
+        "Norrland": 13.2
+      },
+      "abundance_category_pct": {
+        "very_low": 10.4,
+        "low": 25.9,
+        "moderate": 60.7,
+        "high": 3.0,
+        "very_high": 0.0
+      },
+      "mean_abundance": 38.6
+    }
+  ],
+  "hourly_mean_by_hour": [
+    {
+      "hour": "2026-08-04T10",
+      "mean_risk": 12.0
+    },
+    {
+      "hour": "2026-08-04T11",
+      "mean_risk": 11.8
+    },
+    {
+      "hour": "2026-08-04T12",
+      "mean_risk": 11.9
+    },
+    {
+      "hour": "2026-08-04T13",
+      "mean_risk": 12.2
+    },
+    {
+      "hour": "2026-08-04T14",
+      "mean_risk": 12.7
+    },
+    {
+      "hour": "2026-08-04T15",
+      "mean_risk": 13.8
+    },
+    {
+      "hour": "2026-08-04T16",
+      "mean_risk": 15.6
+    },
+    {
+      "hour": "2026-08-04T17",
+      "mean_risk": 18.4
+    },
+    {
+      "hour": "2026-08-04T18",
+      "mean_risk": 20.9
+    },
+    {
+      "hour": "2026-08-04T19",
+      "mean_risk": 21.2
+    },
+    {
+      "hour": "2026-08-04T20",
+      "mean_risk": 20.5
+    },
+    {
+      "hour": "2026-08-04T21",
+      "mean_risk": 18.4
+    },
+    {
+      "hour": "2026-08-04T22",
+      "mean_risk": 15.5
+    },
+    {
+      "hour": "2026-08-04T23",
+      "mean_risk": 13.4
+    },
+    {
+      "hour": "2026-08-05T00",
+      "mean_risk": 13.0
+    },
+    {
+      "hour": "2026-08-05T01",
+      "mean_risk": 14.0
+    },
+    {
+      "hour": "2026-08-05T02",
+      "mean_risk": 15.0
+    },
+    {
+      "hour": "2026-08-05T03",
+      "mean_risk": 15.4
+    },
+    {
+      "hour": "2026-08-05T04",
+      "mean_risk": 15.0
+    },
+    {
+      "hour": "2026-08-05T05",
+      "mean_risk": 13.9
+    },
+    {
+      "hour": "2026-08-05T06",
+      "mean_risk": 12.7
+    },
+    {
+      "hour": "2026-08-05T07",
+      "mean_risk": 11.8
+    },
+    {
+      "hour": "2026-08-05T08",
+      "mean_risk": 11.4
+    },
+    {
+      "hour": "2026-08-05T09",
+      "mean_risk": 11.3
+    },
+    {
+      "hour": "2026-08-05T10",
+      "mean_risk": 11.3
+    },
+    {
+      "hour": "2026-08-05T11",
+      "mean_risk": 11.4
+    },
+    {
+      "hour": "2026-08-05T12",
+      "mean_risk": 11.6
+    },
+    {
+      "hour": "2026-08-05T13",
+      "mean_risk": 12.0
+    },
+    {
+      "hour": "2026-08-05T14",
+      "mean_risk": 12.8
+    },
+    {
+      "hour": "2026-08-05T15",
+      "mean_risk": 14.3
+    },
+    {
+      "hour": "2026-08-05T16",
+      "mean_risk": 16.6
+    },
+    {
+      "hour": "2026-08-05T17",
+      "mean_risk": 19.4
+    },
+    {
+      "hour": "2026-08-05T18",
+      "mean_risk": 21.2
+    },
+    {
+      "hour": "2026-08-05T19",
+      "mean_risk": 21.1
+    },
+    {
+      "hour": "2026-08-05T20",
+      "mean_risk": 20.5
+    },
+    {
+      "hour": "2026-08-05T21",
+      "mean_risk": 18.4
+    },
+    {
+      "hour": "2026-08-05T22",
+      "mean_risk": 15.6
+    },
+    {
+      "hour": "2026-08-05T23",
+      "mean_risk": 13.6
+    },
+    {
+      "hour": "2026-08-06T00",
+      "mean_risk": 13.4
+    },
+    {
+      "hour": "2026-08-06T01",
+      "mean_risk": 14.8
+    },
+    {
+      "hour": "2026-08-06T02",
+      "mean_risk": 16.1
+    },
+    {
+      "hour": "2026-08-06T03",
+      "mean_risk": 16.8
+    },
+    {
+      "hour": "2026-08-06T04",
+      "mean_risk": 16.3
+    },
+    {
+      "hour": "2026-08-06T05",
+      "mean_risk": 14.6
+    },
+    {
+      "hour": "2026-08-06T06",
+      "mean_risk": 13.0
+    },
+    {
+      "hour": "2026-08-06T07",
+      "mean_risk": 12.0
+    },
+    {
+      "hour": "2026-08-06T08",
+      "mean_risk": 11.5
+    },
+    {
+      "hour": "2026-08-06T09",
+      "mean_risk": 11.4
+    },
+    {
+      "hour": "2026-08-06T10",
+      "mean_risk": 11.4
+    }
+  ],
+  "six_hour_change": {
+    "samples": 997342,
+    "mean": 4.58,
+    "p95": 13.68,
+    "max": 25.86
+  },
+  "cell_to_cell_discontinuity": {
+    "pairs_checked": 18052,
+    "mean": 1.83,
+    "p95": 5.37,
+    "max": 20.48
+  },
+  "warnings": [
+    "2026-08-04 (Myggrisk idag): high, very_high are completely empty (0.0% of cells) -- the category threshold may be unreachable for this product; consider recalibrating against real output (see docs/model-audit-after.md).",
+    "2026-08-04 (Myggläge): very_high is completely empty (0.0% of cells) -- the category threshold may be unreachable for this product; consider recalibrating against real output (see docs/model-audit-after.md).",
+    "2026-08-05 (Myggrisk idag): high, very_high are completely empty (0.0% of cells) -- the category threshold may be unreachable for this product; consider recalibrating against real output (see docs/model-audit-after.md).",
+    "2026-08-05 (Myggläge): very_high is completely empty (0.0% of cells) -- the category threshold may be unreachable for this product; consider recalibrating against real output (see docs/model-audit-after.md).",
+    "2026-08-06 (Myggrisk idag): moderate, high, very_high are completely empty (0.0% of cells) -- the category threshold may be unreachable for this product; consider recalibrating against real output (see docs/model-audit-after.md).",
+    "2026-08-06 (Myggläge): very_high is completely empty (0.0% of cells) -- the category threshold may be unreachable for this product; consider recalibrating against real output (see docs/model-audit-after.md).",
+    "2026-08-07 (Myggrisk idag): moderate, high, very_high are completely empty (0.0% of cells) -- the category threshold may be unreachable for this product; consider recalibrating against real output (see docs/model-audit-after.md).",
+    "2026-08-07 (Myggläge): very_high is completely empty (0.0% of cells) -- the category threshold may be unreachable for this product; consider recalibrating against real output (see docs/model-audit-after.md).",
+    "2026-08-08 (Myggrisk idag): moderate, high, very_high are completely empty (0.0% of cells) -- the category threshold may be unreachable for this product; consider recalibrating against real output (see docs/model-audit-after.md).",
+    "2026-08-08 (Myggläge): very_high is completely empty (0.0% of cells) -- the category threshold may be unreachable for this product; consider recalibrating against real output (see docs/model-audit-after.md).",
+    "2026-08-09 (Myggrisk idag): moderate, high, very_high are completely empty (0.0% of cells) -- the category threshold may be unreachable for this product; consider recalibrating against real output (see docs/model-audit-after.md).",
+    "2026-08-09 (Myggläge): very_high is completely empty (0.0% of cells) -- the category threshold may be unreachable for this product; consider recalibrating against real output (see docs/model-audit-after.md).",
+    "2026-08-10: 93% of Sweden is in a single risk category ('very_low') -- check for a model component saturating (e.g. exposure or population term pinned near 0 or 1).",
+    "2026-08-10 (Myggrisk idag): moderate, high, very_high are completely empty (0.0% of cells) -- the category threshold may be unreachable for this product; consider recalibrating against real output (see docs/model-audit-after.md).",
+    "2026-08-10 (Myggläge): very_high is completely empty (0.0% of cells) -- the category threshold may be unreachable for this product; consider recalibrating against real output (see docs/model-audit-after.md)."
+  ]
+}

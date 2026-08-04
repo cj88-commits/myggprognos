@@ -1,0 +1,910 @@
+{
+  "generated_at": "2026-08-04T10:10:54Z",
+  "cell_count": 23194,
+  "locations": [
+    {
+      "name": "Stockholm centrum",
+      "category": "urban centre",
+      "latitude": 59.3293,
+      "longitude": 18.0686,
+      "matched_cell_id": "SE_ISLE_0059_0000_1193",
+      "matched_cell_region": "Gotaland",
+      "mosquito_abundance": 31.276,
+      "daily_peak_risk": 20.078,
+      "daily_peak_local_time": "23:00",
+      "peak_period": "night",
+      "biting_activity_at_peak": 40.448,
+      "exposure_modifier_at_peak": 1.0484,
+      "activity_modifier_at_peak": 0.5831,
+      "confidence": 63.865,
+      "top_positive_factors": [
+        "Varma senaste dagarna",
+        "Hög luftfuktighet som gynnar aktivitet",
+        "Temperatur som gynnar myggaktivitet"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet",
+        "Stadsmiljö"
+      ],
+      "current_risk_at_12h_utc": 11.35,
+      "current_risk_at_21h_utc": 20.078
+    },
+    {
+      "name": "Stockholms skargard (Vaxholm)",
+      "category": "archipelago",
+      "latitude": 59.4025,
+      "longitude": 18.3538,
+      "matched_cell_id": "SE_ISLE_0051_0000_000",
+      "matched_cell_region": "Gotaland",
+      "mosquito_abundance": 32.631,
+      "daily_peak_risk": 21.109,
+      "daily_peak_local_time": "20:00",
+      "peak_period": "evening",
+      "biting_activity_at_peak": 38.501,
+      "exposure_modifier_at_peak": 1.0818,
+      "activity_modifier_at_peak": 0.5695,
+      "confidence": 63.833,
+      "top_positive_factors": [
+        "Varma senaste dagarna",
+        "Skymning/gryning med hög aktivitet",
+        "Temperatur som gynnar myggaktivitet"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet"
+      ],
+      "current_risk_at_12h_utc": 12.235,
+      "current_risk_at_21h_utc": 20.636
+    },
+    {
+      "name": "Uppsala",
+      "category": "major city",
+      "latitude": 59.8586,
+      "longitude": 17.6389,
+      "matched_cell_id": "SE_0104_0070",
+      "matched_cell_region": "Gotaland",
+      "mosquito_abundance": 35.981,
+      "daily_peak_risk": 20.288,
+      "daily_peak_local_time": "23:00",
+      "peak_period": "night",
+      "biting_activity_at_peak": 32.067,
+      "exposure_modifier_at_peak": 1.0239,
+      "activity_modifier_at_peak": 0.5245,
+      "confidence": 82.496,
+      "top_positive_factors": [
+        "Varma senaste dagarna",
+        "Hög luftfuktighet som gynnar aktivitet",
+        "Temperatur som gynnar myggaktivitet"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet",
+        "Stadsmiljö"
+      ],
+      "current_risk_at_12h_utc": 12.461,
+      "current_risk_at_21h_utc": 20.288
+    },
+    {
+      "name": "Osterfarnebo",
+      "category": "dense inland forest",
+      "latitude": 60.3372,
+      "longitude": 16.9328,
+      "matched_cell_id": "SE_0114_0063",
+      "matched_cell_region": "Svealand",
+      "mosquito_abundance": 39.841,
+      "daily_peak_risk": 24.96,
+      "daily_peak_local_time": "20:00",
+      "peak_period": "evening",
+      "biting_activity_at_peak": 34.767,
+      "exposure_modifier_at_peak": 1.0981,
+      "activity_modifier_at_peak": 0.5434,
+      "confidence": 82.262,
+      "top_positive_factors": [
+        "Skymning/gryning med hög aktivitet",
+        "Temperatur som gynnar myggaktivitet",
+        "Varma senaste dagarna"
+      ],
+      "top_negative_factors": [],
+      "current_risk_at_12h_utc": 14.843,
+      "current_risk_at_21h_utc": 23.381
+    },
+    {
+      "name": "Linkoping",
+      "category": "major city",
+      "latitude": 58.4108,
+      "longitude": 15.6214,
+      "matched_cell_id": "SE_0071_0049",
+      "matched_cell_region": "Gotaland",
+      "mosquito_abundance": 36.885,
+      "daily_peak_risk": 28.591,
+      "daily_peak_local_time": "20:00",
+      "peak_period": "evening",
+      "biting_activity_at_peak": 60.857,
+      "exposure_modifier_at_peak": 1.0168,
+      "activity_modifier_at_peak": 0.726,
+      "confidence": 83.17,
+      "top_positive_factors": [
+        "Skymning/gryning med hög aktivitet",
+        "Temperatur som gynnar myggaktivitet",
+        "Varma senaste dagarna"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet"
+      ],
+      "current_risk_at_12h_utc": 13.595,
+      "current_risk_at_21h_utc": 22.551
+    },
+    {
+      "name": "Store Mosse nationalpark",
+      "category": "wetland / floodplain",
+      "latitude": 57.25,
+      "longitude": 13.9833,
+      "matched_cell_id": "SE_0046_0032",
+      "matched_cell_region": "Gotaland",
+      "mosquito_abundance": 49.241,
+      "daily_peak_risk": 35.388,
+      "daily_peak_local_time": "20:00",
+      "peak_period": "evening",
+      "biting_activity_at_peak": 49.427,
+      "exposure_modifier_at_peak": 1.0595,
+      "activity_modifier_at_peak": 0.646,
+      "confidence": 83.83,
+      "top_positive_factors": [
+        "Skymning/gryning med hög aktivitet",
+        "Temperatur som gynnar myggaktivitet",
+        "Varma senaste dagarna"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet"
+      ],
+      "current_risk_at_12h_utc": 19.057,
+      "current_risk_at_21h_utc": 34.08
+    },
+    {
+      "name": "Goteborg kustlinje",
+      "category": "exposed west coast",
+      "latitude": 57.6969,
+      "longitude": 11.8622,
+      "matched_cell_id": "SE_0056_0010",
+      "matched_cell_region": "Gotaland",
+      "mosquito_abundance": 36.614,
+      "daily_peak_risk": 20.692,
+      "daily_peak_local_time": "23:00",
+      "peak_period": "night",
+      "biting_activity_at_peak": 37.76,
+      "exposure_modifier_at_peak": 0.9538,
+      "activity_modifier_at_peak": 0.5643,
+      "confidence": 83.971,
+      "top_positive_factors": [
+        "Varma senaste dagarna",
+        "Temperatur som gynnar myggaktivitet",
+        "Hög luftfuktighet som gynnar aktivitet"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet",
+        "Stadsmiljö"
+      ],
+      "current_risk_at_12h_utc": 11.86,
+      "current_risk_at_21h_utc": 20.692
+    },
+    {
+      "name": "Bohuslan (Fjallbacka)",
+      "category": "exposed west coast",
+      "latitude": 58.5992,
+      "longitude": 11.2814,
+      "matched_cell_id": "SE_0076_0004",
+      "matched_cell_region": "Gotaland",
+      "mosquito_abundance": 35.727,
+      "daily_peak_risk": 23.255,
+      "daily_peak_local_time": "20:00",
+      "peak_period": "evening",
+      "biting_activity_at_peak": 38.806,
+      "exposure_modifier_at_peak": 1.0845,
+      "activity_modifier_at_peak": 0.5716,
+      "confidence": 82.43,
+      "top_positive_factors": [
+        "Skymning/gryning med hög aktivitet",
+        "Hög luftfuktighet som gynnar aktivitet",
+        "Varma senaste dagarna"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet"
+      ],
+      "current_risk_at_12h_utc": 13.511,
+      "current_risk_at_21h_utc": 21.81
+    },
+    {
+      "name": "Malmo",
+      "category": "major city",
+      "latitude": 55.605,
+      "longitude": 13.0038,
+      "matched_cell_id": "SE_0009_0022",
+      "matched_cell_region": "Gotaland",
+      "mosquito_abundance": 33.298,
+      "daily_peak_risk": 21.258,
+      "daily_peak_local_time": "20:00",
+      "peak_period": "evening",
+      "biting_activity_at_peak": 40.284,
+      "exposure_modifier_at_peak": 1.0447,
+      "activity_modifier_at_peak": 0.582,
+      "confidence": 82.823,
+      "top_positive_factors": [
+        "Varma senaste dagarna",
+        "Skymning/gryning med hög aktivitet",
+        "Hög luftfuktighet som gynnar aktivitet"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet",
+        "Stadsmiljö"
+      ],
+      "current_risk_at_12h_utc": 12.433,
+      "current_risk_at_21h_utc": 18.892
+    },
+    {
+      "name": "Vanern strand (Lidkoping)",
+      "category": "lake shore",
+      "latitude": 58.5039,
+      "longitude": 13.1573,
+      "matched_cell_id": "SE_0074_0023",
+      "matched_cell_region": "Gotaland",
+      "mosquito_abundance": 40.451,
+      "daily_peak_risk": 25.909,
+      "daily_peak_local_time": "23:00",
+      "peak_period": "night",
+      "biting_activity_at_peak": 41.031,
+      "exposure_modifier_at_peak": 1.0388,
+      "activity_modifier_at_peak": 0.5872,
+      "confidence": 83.015,
+      "top_positive_factors": [
+        "Varma senaste dagarna",
+        "Temperatur som gynnar myggaktivitet",
+        "Skymning/gryning med hög aktivitet"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet"
+      ],
+      "current_risk_at_12h_utc": 14.342,
+      "current_risk_at_21h_utc": 25.909
+    },
+    {
+      "name": "Vattern strand (Granna)",
+      "category": "lake shore",
+      "latitude": 58.0206,
+      "longitude": 14.4694,
+      "matched_cell_id": "SE_0063_0037",
+      "matched_cell_region": "Gotaland",
+      "mosquito_abundance": 33.046,
+      "daily_peak_risk": 28.123,
+      "daily_peak_local_time": "20:00",
+      "peak_period": "evening",
+      "biting_activity_at_peak": 63.697,
+      "exposure_modifier_at_peak": 1.0866,
+      "activity_modifier_at_peak": 0.7459,
+      "confidence": 82.552,
+      "top_positive_factors": [
+        "Skymning/gryning med hög aktivitet",
+        "Temperatur som gynnar myggaktivitet",
+        "Varma senaste dagarna"
+      ],
+      "top_negative_factors": [],
+      "current_risk_at_12h_utc": 13.06,
+      "current_risk_at_21h_utc": 22.324
+    },
+    {
+      "name": "Gotland (Visby)",
+      "category": "island",
+      "latitude": 57.6349,
+      "longitude": 18.2948,
+      "matched_cell_id": "SE_0054_0077",
+      "matched_cell_region": "Gotaland",
+      "mosquito_abundance": 35.812,
+      "daily_peak_risk": 25.037,
+      "daily_peak_local_time": "20:00",
+      "peak_period": "evening",
+      "biting_activity_at_peak": 51.336,
+      "exposure_modifier_at_peak": 1.0098,
+      "activity_modifier_at_peak": 0.6593,
+      "confidence": 83.452,
+      "top_positive_factors": [
+        "Skymning/gryning med hög aktivitet",
+        "Varma senaste dagarna",
+        "Temperatur som gynnar myggaktivitet"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet"
+      ],
+      "current_risk_at_12h_utc": 12.509,
+      "current_risk_at_21h_utc": 21.33
+    },
+    {
+      "name": "Gotland (Faro)",
+      "category": "island / exposed coast",
+      "latitude": 57.9333,
+      "longitude": 19.1167,
+      "matched_cell_id": "SE_ISLE_0070_0000_006",
+      "matched_cell_region": "Gotaland",
+      "mosquito_abundance": 34.079,
+      "daily_peak_risk": 27.608,
+      "daily_peak_local_time": "20:00",
+      "peak_period": "evening",
+      "biting_activity_at_peak": 58.183,
+      "exposure_modifier_at_peak": 1.0908,
+      "activity_modifier_at_peak": 0.7073,
+      "confidence": 64.234,
+      "top_positive_factors": [
+        "Varma senaste dagarna",
+        "Skymning/gryning med hög aktivitet",
+        "Hög luftfuktighet som gynnar aktivitet"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet"
+      ],
+      "current_risk_at_12h_utc": 13.269,
+      "current_risk_at_21h_utc": 21.848
+    },
+    {
+      "name": "Oland (Borgholm)",
+      "category": "island",
+      "latitude": 56.879,
+      "longitude": 16.6564,
+      "matched_cell_id": "SE_ISLE_0009_0000_098",
+      "matched_cell_region": "Gotaland",
+      "mosquito_abundance": 30.807,
+      "daily_peak_risk": 24.346,
+      "daily_peak_local_time": "20:00",
+      "peak_period": "evening",
+      "biting_activity_at_peak": 56.669,
+      "exposure_modifier_at_peak": 1.0803,
+      "activity_modifier_at_peak": 0.6967,
+      "confidence": 64.056,
+      "top_positive_factors": [
+        "Varma senaste dagarna",
+        "Skymning/gryning med hög aktivitet",
+        "Hög luftfuktighet som gynnar aktivitet"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet"
+      ],
+      "current_risk_at_12h_utc": 12.424,
+      "current_risk_at_21h_utc": 18.829
+    },
+    {
+      "name": "Oland (Ottenby, sodra udden)",
+      "category": "island / exposed coast",
+      "latitude": 56.2,
+      "longitude": 16.4167,
+      "matched_cell_id": "SE_ISLE_0009_0000_000",
+      "matched_cell_region": "Gotaland",
+      "mosquito_abundance": 31.809,
+      "daily_peak_risk": 24.528,
+      "daily_peak_local_time": "20:00",
+      "peak_period": "evening",
+      "biting_activity_at_peak": 56.956,
+      "exposure_modifier_at_peak": 1.0511,
+      "activity_modifier_at_peak": 0.6987,
+      "confidence": 64.324,
+      "top_positive_factors": [
+        "Varma senaste dagarna",
+        "Skymning/gryning med hög aktivitet",
+        "Hög luftfuktighet som gynnar aktivitet"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet"
+      ],
+      "current_risk_at_12h_utc": 12.465,
+      "current_risk_at_21h_utc": 19.635
+    },
+    {
+      "name": "Umea",
+      "category": "northern coast city",
+      "latitude": 63.8258,
+      "longitude": 20.263,
+      "matched_cell_id": "SE_ISLE_0059_0000_2356",
+      "matched_cell_region": "Norrland",
+      "mosquito_abundance": 30.312,
+      "daily_peak_risk": 17.769,
+      "daily_peak_local_time": "20:00",
+      "peak_period": "evening",
+      "biting_activity_at_peak": 31.978,
+      "exposure_modifier_at_peak": 1.0657,
+      "activity_modifier_at_peak": 0.5238,
+      "confidence": 63.532,
+      "top_positive_factors": [
+        "Skymning/gryning med hög aktivitet",
+        "Varma senaste dagarna",
+        "Temperatur som gynnar myggaktivitet"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet"
+      ],
+      "current_risk_at_12h_utc": 10.694,
+      "current_risk_at_21h_utc": 17.534
+    },
+    {
+      "name": "Lulea",
+      "category": "northern coast city",
+      "latitude": 65.5848,
+      "longitude": 22.1567,
+      "matched_cell_id": "SE_ISLE_0059_0000_2858",
+      "matched_cell_region": "Norrland",
+      "mosquito_abundance": 29.731,
+      "daily_peak_risk": 16.587,
+      "daily_peak_local_time": "23:00",
+      "peak_period": "night",
+      "biting_activity_at_peak": 28.84,
+      "exposure_modifier_at_peak": 1.0587,
+      "activity_modifier_at_peak": 0.5019,
+      "confidence": 63.03,
+      "top_positive_factors": [
+        "Varma senaste dagarna",
+        "Hög luftfuktighet som gynnar aktivitet",
+        "Skymning/gryning med hög aktivitet"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet"
+      ],
+      "current_risk_at_12h_utc": 10.967,
+      "current_risk_at_21h_utc": 16.587
+    },
+    {
+      "name": "Kiruna",
+      "category": "far north",
+      "latitude": 67.8558,
+      "longitude": 20.2253,
+      "matched_cell_id": "SE_0282_0097",
+      "matched_cell_region": "Norrland",
+      "mosquito_abundance": 21.786,
+      "daily_peak_risk": 10.097,
+      "daily_peak_local_time": "20:00",
+      "peak_period": "evening",
+      "biting_activity_at_peak": 17.728,
+      "exposure_modifier_at_peak": 1.0408,
+      "activity_modifier_at_peak": 0.4241,
+      "confidence": 62.053,
+      "top_positive_factors": [
+        "Hög luftfuktighet som gynnar aktivitet",
+        "Skymning/gryning med hög aktivitet"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet"
+      ],
+      "current_risk_at_12h_utc": 7.909,
+      "current_risk_at_21h_utc": 9.267
+    },
+    {
+      "name": "Abisko",
+      "category": "far north / mountain",
+      "latitude": 68.3557,
+      "longitude": 18.7871,
+      "matched_cell_id": "SE_0293_0082",
+      "matched_cell_region": "Norrland",
+      "mosquito_abundance": 19.019,
+      "daily_peak_risk": 10.19,
+      "daily_peak_local_time": "20:00",
+      "peak_period": "evening",
+      "biting_activity_at_peak": 24.79,
+      "exposure_modifier_at_peak": 1.0776,
+      "activity_modifier_at_peak": 0.4735,
+      "confidence": 61.981,
+      "top_positive_factors": [
+        "Hög luftfuktighet som gynnar aktivitet",
+        "Skymning/gryning med hög aktivitet",
+        "Nära vatten"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet"
+      ],
+      "current_risk_at_12h_utc": 7.659,
+      "current_risk_at_21h_utc": 9.681
+    },
+    {
+      "name": "Are (fjallomrade)",
+      "category": "mountain region",
+      "latitude": 63.3989,
+      "longitude": 13.0817,
+      "matched_cell_id": "SE_0183_0023",
+      "matched_cell_region": "Svealand",
+      "mosquito_abundance": 19.471,
+      "daily_peak_risk": 8.379,
+      "daily_peak_local_time": "08:00",
+      "peak_period": "morning",
+      "biting_activity_at_peak": 16.928,
+      "exposure_modifier_at_peak": 0.9793,
+      "activity_modifier_at_peak": 0.4185,
+      "confidence": 63.57,
+      "top_positive_factors": [
+        "Hög luftfuktighet som gynnar aktivitet",
+        "Temperatur som gynnar myggaktivitet",
+        "Vegetation med lite vind"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet"
+      ],
+      "current_risk_at_12h_utc": 5.607,
+      "current_risk_at_21h_utc": 6.298
+    },
+    {
+      "name": "Sarek nationalpark",
+      "category": "mountain region / far north",
+      "latitude": 67.45,
+      "longitude": 17.7333,
+      "matched_cell_id": "SE_0273_0071",
+      "matched_cell_region": "Norrland",
+      "mosquito_abundance": 14.526,
+      "daily_peak_risk": 5.408,
+      "daily_peak_local_time": "08:00",
+      "peak_period": "morning",
+      "biting_activity_at_peak": 10.635,
+      "exposure_modifier_at_peak": 0.9468,
+      "activity_modifier_at_peak": 0.3744,
+      "confidence": 62.71,
+      "top_positive_factors": [
+        "Hög luftfuktighet som gynnar aktivitet",
+        "Temperatur som gynnar myggaktivitet"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet"
+      ],
+      "current_risk_at_12h_utc": 3.07,
+      "current_risk_at_21h_utc": 3.149
+    },
+    {
+      "name": "Smaland jordbruksbygd (Vaxjo)",
+      "category": "farmland",
+      "latitude": 56.8777,
+      "longitude": 14.8091,
+      "matched_cell_id": "SE_0037_0041",
+      "matched_cell_region": "Gotaland",
+      "mosquito_abundance": 37.696,
+      "daily_peak_risk": 25.81,
+      "daily_peak_local_time": "20:00",
+      "peak_period": "evening",
+      "biting_activity_at_peak": 43.239,
+      "exposure_modifier_at_peak": 1.082,
+      "activity_modifier_at_peak": 0.6027,
+      "confidence": 82.762,
+      "top_positive_factors": [
+        "Skymning/gryning med hög aktivitet",
+        "Temperatur som gynnar myggaktivitet",
+        "Varma senaste dagarna"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet"
+      ],
+      "current_risk_at_12h_utc": 14.134,
+      "current_risk_at_21h_utc": 25.255
+    },
+    {
+      "name": "Skane jordbruksbygd (Ystad)",
+      "category": "farmland",
+      "latitude": 55.4295,
+      "longitude": 13.8204,
+      "matched_cell_id": "SE_ISLE_0059_0000_028",
+      "matched_cell_region": "Gotaland",
+      "mosquito_abundance": 29.547,
+      "daily_peak_risk": 19.817,
+      "daily_peak_local_time": "20:00",
+      "peak_period": "evening",
+      "biting_activity_at_peak": 42.71,
+      "exposure_modifier_at_peak": 1.0664,
+      "activity_modifier_at_peak": 0.599,
+      "confidence": 63.936,
+      "top_positive_factors": [
+        "Skymning/gryning med hög aktivitet",
+        "Hög luftfuktighet som gynnar aktivitet",
+        "Varma senaste dagarna"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet"
+      ],
+      "current_risk_at_12h_utc": 11.445,
+      "current_risk_at_21h_utc": 14.822
+    },
+    {
+      "name": "Dalalven flodslatt",
+      "category": "floodplain",
+      "latitude": 60.6167,
+      "longitude": 17.4167,
+      "matched_cell_id": "SE_ISLE_0059_0000_1560",
+      "matched_cell_region": "Svealand",
+      "mosquito_abundance": 39.252,
+      "daily_peak_risk": 23.746,
+      "daily_peak_local_time": "23:00",
+      "peak_period": "night",
+      "biting_activity_at_peak": 38.024,
+      "exposure_modifier_at_peak": 1.0177,
+      "activity_modifier_at_peak": 0.5662,
+      "confidence": 64.682,
+      "top_positive_factors": [
+        "Varma senaste dagarna",
+        "Temperatur som gynnar myggaktivitet",
+        "Skymning/gryning med hög aktivitet"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet"
+      ],
+      "current_risk_at_12h_utc": 13.639,
+      "current_risk_at_21h_utc": 23.746
+    },
+    {
+      "name": "Tornedalen (alvdal, floodplain)",
+      "category": "floodplain / far north",
+      "latitude": 65.83,
+      "longitude": 24.15,
+      "matched_cell_id": "SE_ISLE_0059_0000_2975",
+      "matched_cell_region": "Norrland",
+      "mosquito_abundance": 30.269,
+      "daily_peak_risk": 21.182,
+      "daily_peak_local_time": "20:00",
+      "peak_period": "evening",
+      "biting_activity_at_peak": 45.789,
+      "exposure_modifier_at_peak": 1.074,
+      "activity_modifier_at_peak": 0.6205,
+      "confidence": 63.985,
+      "top_positive_factors": [
+        "Skymning/gryning med hög aktivitet",
+        "Varma senaste dagarna",
+        "Hög luftfuktighet som gynnar aktivitet"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet"
+      ],
+      "current_risk_at_12h_utc": 10.586,
+      "current_risk_at_21h_utc": 16.642
+    },
+    {
+      "name": "Vastkusten skargard (Marstrand)",
+      "category": "archipelago",
+      "latitude": 57.8875,
+      "longitude": 11.5875,
+      "matched_cell_id": "SE_ISLE_0020_0000_000",
+      "matched_cell_region": "Gotaland",
+      "mosquito_abundance": 30.686,
+      "daily_peak_risk": 18.988,
+      "daily_peak_local_time": "20:00",
+      "peak_period": "evening",
+      "biting_activity_at_peak": 35.132,
+      "exposure_modifier_at_peak": 1.0795,
+      "activity_modifier_at_peak": 0.5459,
+      "confidence": 63.566,
+      "top_positive_factors": [
+        "Varma senaste dagarna",
+        "Skymning/gryning med hög aktivitet",
+        "Temperatur som gynnar myggaktivitet"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet"
+      ],
+      "current_risk_at_12h_utc": 11.586,
+      "current_risk_at_21h_utc": 13.052
+    },
+    {
+      "name": "Ostkusten skargard (Sandhamn)",
+      "category": "archipelago",
+      "latitude": 59.2867,
+      "longitude": 18.9161,
+      "matched_cell_id": "SE_ISLE_0076_0000_000",
+      "matched_cell_region": "Gotaland",
+      "mosquito_abundance": 30.686,
+      "daily_peak_risk": 21.207,
+      "daily_peak_local_time": "20:00",
+      "peak_period": "evening",
+      "biting_activity_at_peak": 43.228,
+      "exposure_modifier_at_peak": 1.0922,
+      "activity_modifier_at_peak": 0.6026,
+      "confidence": 63.759,
+      "top_positive_factors": [
+        "Skymning/gryning med hög aktivitet",
+        "Hög luftfuktighet som gynnar aktivitet",
+        "Varma senaste dagarna"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet"
+      ],
+      "current_risk_at_12h_utc": 12.605,
+      "current_risk_at_21h_utc": 20.743
+    },
+    {
+      "name": "Sundsvall kustnara",
+      "category": "northern coast city",
+      "latitude": 62.3908,
+      "longitude": 17.3069,
+      "matched_cell_id": "SE_ISLE_0059_0000_1898",
+      "matched_cell_region": "Svealand",
+      "mosquito_abundance": 31.139,
+      "daily_peak_risk": 22.448,
+      "daily_peak_local_time": "20:00",
+      "peak_period": "evening",
+      "biting_activity_at_peak": 47.562,
+      "exposure_modifier_at_peak": 1.0847,
+      "activity_modifier_at_peak": 0.6329,
+      "confidence": 63.98,
+      "top_positive_factors": [
+        "Skymning/gryning med hög aktivitet",
+        "Varma senaste dagarna",
+        "Temperatur som gynnar myggaktivitet"
+      ],
+      "top_negative_factors": [],
+      "current_risk_at_12h_utc": 12.129,
+      "current_risk_at_21h_utc": 19.904
+    },
+    {
+      "name": "Ornskoldsvik",
+      "category": "northern coast city",
+      "latitude": 63.2909,
+      "longitude": 18.7153,
+      "matched_cell_id": "SE_ISLE_0059_0000_2184",
+      "matched_cell_region": "Svealand",
+      "mosquito_abundance": 30.699,
+      "daily_peak_risk": 18.949,
+      "daily_peak_local_time": "23:00",
+      "peak_period": "night",
+      "biting_activity_at_peak": 36.543,
+      "exposure_modifier_at_peak": 1.0577,
+      "activity_modifier_at_peak": 0.5558,
+      "confidence": 63.556,
+      "top_positive_factors": [
+        "Hög luftfuktighet som gynnar aktivitet",
+        "Varma senaste dagarna",
+        "Skymning/gryning med hög aktivitet"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet"
+      ],
+      "current_risk_at_12h_utc": 11.227,
+      "current_risk_at_21h_utc": 18.949
+    },
+    {
+      "name": "Vasterbottens inland (Lycksele)",
+      "category": "dense inland forest",
+      "latitude": 64.6006,
+      "longitude": 18.67,
+      "matched_cell_id": "SE_0209_0081",
+      "matched_cell_region": "Norrland",
+      "mosquito_abundance": 30.666,
+      "daily_peak_risk": 18.1,
+      "daily_peak_local_time": "20:00",
+      "peak_period": "evening",
+      "biting_activity_at_peak": 29.863,
+      "exposure_modifier_at_peak": 1.1042,
+      "activity_modifier_at_peak": 0.509,
+      "confidence": 62.963,
+      "top_positive_factors": [
+        "Skymning/gryning med hög aktivitet",
+        "Varma senaste dagarna",
+        "Hög luftfuktighet som gynnar aktivitet"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet"
+      ],
+      "current_risk_at_12h_utc": 11.686,
+      "current_risk_at_21h_utc": 16.03
+    },
+    {
+      "name": "Smalandsskog (Uppvidinge)",
+      "category": "dense inland forest",
+      "latitude": 57.05,
+      "longitude": 15.3167,
+      "matched_cell_id": "SE_0041_0046",
+      "matched_cell_region": "Gotaland",
+      "mosquito_abundance": 40.379,
+      "daily_peak_risk": 33.227,
+      "daily_peak_local_time": "20:00",
+      "peak_period": "evening",
+      "biting_activity_at_peak": 57.412,
+      "exposure_modifier_at_peak": 1.1166,
+      "activity_modifier_at_peak": 0.7019,
+      "confidence": 82.892,
+      "top_positive_factors": [
+        "Skymning/gryning med hög aktivitet",
+        "Varma senaste dagarna",
+        "Temperatur som gynnar myggaktivitet"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet"
+      ],
+      "current_risk_at_12h_utc": 15.902,
+      "current_risk_at_21h_utc": 27.612
+    },
+    {
+      "name": "Vasteras",
+      "category": "major city",
+      "latitude": 59.6099,
+      "longitude": 16.5448,
+      "matched_cell_id": "SE_0098_0059",
+      "matched_cell_region": "Gotaland",
+      "mosquito_abundance": 35.317,
+      "daily_peak_risk": 21.855,
+      "daily_peak_local_time": "23:00",
+      "peak_period": "night",
+      "biting_activity_at_peak": 35.964,
+      "exposure_modifier_at_peak": 1.0682,
+      "activity_modifier_at_peak": 0.5518,
+      "confidence": 82.111,
+      "top_positive_factors": [
+        "Varma senaste dagarna",
+        "Temperatur som gynnar myggaktivitet",
+        "Hög luftfuktighet som gynnar aktivitet"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet"
+      ],
+      "current_risk_at_12h_utc": 12.505,
+      "current_risk_at_21h_utc": 21.855
+    },
+    {
+      "name": "Orebro",
+      "category": "major city",
+      "latitude": 59.2741,
+      "longitude": 15.2066,
+      "matched_cell_id": "SE_0091_0045",
+      "matched_cell_region": "Gotaland",
+      "mosquito_abundance": 33.702,
+      "daily_peak_risk": 17.701,
+      "daily_peak_local_time": "23:00",
+      "peak_period": "night",
+      "biting_activity_at_peak": 27.114,
+      "exposure_modifier_at_peak": 1.0212,
+      "activity_modifier_at_peak": 0.4898,
+      "confidence": 82.053,
+      "top_positive_factors": [
+        "Varma senaste dagarna",
+        "Temperatur som gynnar myggaktivitet",
+        "Skymning/gryning med hög aktivitet"
+      ],
+      "top_negative_factors": [
+        "Stadsmiljö"
+      ],
+      "current_risk_at_12h_utc": 11.679,
+      "current_risk_at_21h_utc": 17.701
+    },
+    {
+      "name": "Kristianstad (vatmarker)",
+      "category": "wetland / floodplain",
+      "latitude": 56.0294,
+      "longitude": 14.1567,
+      "matched_cell_id": "SE_0018_0034",
+      "matched_cell_region": "Gotaland",
+      "mosquito_abundance": 38.825,
+      "daily_peak_risk": 30.969,
+      "daily_peak_local_time": "20:00",
+      "peak_period": "evening",
+      "biting_activity_at_peak": 58.158,
+      "exposure_modifier_at_peak": 1.0743,
+      "activity_modifier_at_peak": 0.7071,
+      "confidence": 83.126,
+      "top_positive_factors": [
+        "Skymning/gryning med hög aktivitet",
+        "Varma senaste dagarna",
+        "Hög luftfuktighet som gynnar aktivitet"
+      ],
+      "top_negative_factors": [
+        "Vind som dämpar myggaktivitet"
+      ],
+      "current_risk_at_12h_utc": 14.733,
+      "current_risk_at_21h_utc": 23.132
+    },
+    {
+      "name": "Hjalstaviken (vatmark)",
+      "category": "wetland / floodplain",
+      "latitude": 59.6167,
+      "longitude": 17.4167,
+      "matched_cell_id": "SE_0098_0068",
+      "matched_cell_region": "Gotaland",
+      "mosquito_abundance": 39.009,
+      "daily_peak_risk": 29.76,
+      "daily_peak_local_time": "20:00",
+      "peak_period": "evening",
+      "biting_activity_at_peak": 61.203,
+      "exposure_modifier_at_peak": 0.9975,
+      "activity_modifier_at_peak": 0.7284,
+      "confidence": 83.298,
+      "top_positive_factors": [
+        "Skymning/gryning med hög aktivitet",
+        "Temperatur som gynnar myggaktivitet",
+        "Varma senaste dagarna"
+      ],
+      "top_negative_factors": [],
+      "current_risk_at_12h_utc": 13.72,
+      "current_risk_at_21h_utc": 24.996
+    }
+  ]
+}
