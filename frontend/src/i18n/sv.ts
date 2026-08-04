@@ -127,6 +127,31 @@ const sv = {
   "panel.whenChangesTitle": "När ändras det?",
   "panel.next7days": "Kommande 7 dagar",
   "panel.next48h": "Kommande 48 timmar",
+
+  "panel.adviceTitle": "Vad bör jag göra?",
+  "panel.advice.very_low": "Bra tid för promenad eller annan utomhusaktivitet.",
+  "panel.advice.low": "Låg risk för de flesta utomhusaktiviteter.",
+  "panel.advice.moderate": "Ta gärna med myggmedel om du är känslig eller stannar ute länge.",
+  "panel.advice.high": "Ta med myggmedel och överväg heltäckande kläder.",
+  "panel.advice.very_high": "Undvik våtmarker och skog om möjligt. Använd myggmedel.",
+
+  "panel.timelineTitle": "Läge under dagen",
+  "panel.timelineAriaLabel": "Myggrisk time för timme, kl {hour}: {category}",
+
+  "panel.cardsTitle": "Kommande dagar",
+  "panel.cardToday": "Idag",
+  "panel.cardTomorrow": "Imorgon",
+  "panel.cardPeak": "Topp kl {time}",
+  "panel.cardPeakUnknown": "Topp okänd",
+
+  "panel.howItWorksTitle": "Hur fungerar prognosen?",
+  "panel.detailsTitle": "Tekniska detaljer",
+
+  "sheet.expand": "Visa mer",
+  "sheet.collapse": "Visa mindre",
+  "sheet.swipeUp": "Svep upp",
+  "sheet.dragHandleLabel": "Dra för att visa mer eller mindre av prognospanelen",
+
   "panel.reportButton": "Rapportera mygg här",
   "panel.shareButton": "Dela vyn",
   "panel.shareCopied": "Länk kopierad!",

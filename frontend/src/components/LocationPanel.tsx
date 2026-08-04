@@ -16,6 +16,8 @@ import { useI18n } from "../i18n";
 import type { I18nKey } from "../i18n/types";
 import { currentDateIso, currentHourBucketLabel, formatStockholmDateLabel, formatStockholmHourShort, hourBucketToDate } from "../lib/time";
 import { ReportForm } from "./ReportForm";
+import { HourTimeline } from "./HourTimeline";
+import { ForecastCards } from "./ForecastCards";
 
 // recharts is a sizeable dependency (see vite.config.ts manualChunks) --
 // deferring its import until a chart is actually about to render (rather
@@ -297,104 +299,146 @@ export function LocationPanel({
         )}
       </div>
 
-      {/* --- "Om siffrorna" -- technical breakdown, shown after the plain
-          language summary above, not before it. --- */}
-      <div className="technical-section">
-        <div className="section-title">{t("panel.technicalTitle")}</div>
-        <p className="model-disclaimer">{t("panel.modelDisclaimer")}</p>
-
-        {(isRiskProduct || isAbundanceLayer) && (
-          <p className="index-line">{t("panel.indexLabel", { value: formatScore(displayValue) })}</p>
-        )}
-
-        {isRiskProduct && (
-          <p style={{ fontSize: "0.78rem", color: "var(--color-text-muted)" }}>
-            {t("panel.activityAdjusted", { activity: t(`activity.${activity}` as I18nKey) })}
-          </p>
-        )}
-
-        {reportAdjustment.applied && (
-          <p style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
-            {t("panel.modelEstimate", {
-              model: formatScore(reportAdjustment.modelRisk),
-              count: reportSummary?.report_count ?? 0,
-              adjusted: formatScore(reportAdjustment.adjustedRisk),
-              weight: Math.round(reportAdjustment.weight * 100),
-            })}
-          </p>
-        )}
-
-        <div className="subscore-grid">
-          <SubscoreCard label={t("panel.population")} value={activeRecord.population_potential} />
-          <SubscoreCard label={t("panel.activity")} value={activeRecord.biting_activity} />
-          <SubscoreCard
-            label={t("panel.exposure")}
-            value={exposureForActivity(activeRecord.base_exposure_fraction, activityMultiplier)}
-          />
-        </div>
-
+      {/* "Vad bör jag göra?" -- one conservative, actionable line straight
+          after the plain-language guidance above, before any chart or
+          number. Deliberately risk-product only: Myggläge/aktivitet/
+          prognosunderlag aren't nuisance predictions, so there's no
+          "should I do X" advice to give for them (same gating as the
+          guidance text itself). */}
+      {isRiskProduct && (
         <div>
-          <div className="section-title">{t("panel.dataQualityTitle")}</div>
-          <div className="quality-row">
-            <DataQualityMeter activeIndex={dqIndex} />
-            <span className="quality-label">{dqLabel}</span>
-          </div>
-          <p className="quality-explain">{t("panel.dataQualityExplain")}</p>
+          <div className="section-title">{t("panel.adviceTitle")}</div>
+          <p style={{ margin: 0, fontSize: "0.95rem" }}>{t(`panel.advice.${riskLikeCategory.key}` as I18nKey)}</p>
         </div>
-      </div>
+      )}
+
+      {/* "When is it worst?" -- a compact dawn-to-night dot strip for the
+          selected day, only meaningful while hourly data exists (today/
+          tomorrow); days 2-6 only have daily-resolution data. */}
+      {isRiskProduct && isHourlyDay && series && series.hourly.length > 0 && (
+        <HourTimeline
+          hourly={series.hourly}
+          date={date}
+          activityMultiplier={activityMultiplier}
+          combination={manifest?.combination}
+        />
+      )}
+
+      {/* "Tomorrow" / weekend planning -- plain today/tomorrow/day-after
+          cards instead of making everyone read a line chart to plan ahead. */}
+      {isRiskProduct && series && series.daily.length > 0 && (
+        <ForecastCards daily={series.daily} activityMultiplier={activityMultiplier} combination={manifest?.combination} />
+      )}
+
+      {/* Everything below is progressive disclosure (item 3): collapsed by
+          default, for the minority of visitors who want the methodology or
+          the raw numbers rather than just the headline/advice above. */}
 
       {/* Myggläge deliberately has NO factor list here: the generated
           explanation mixes population, activity and exposure factors
           (including wind/rain suppression), which would misleadingly read
           as if current weather affects abundance -- see
           panel.abundanceExplain in the hero block instead. */}
-      {activeDailyRecord && isRiskProduct && (
-        <div>
-          <div className="section-title">
-            {layer === "daily_peak_risk"
-              ? t("panel.whyTitleToday")
-              : explanationMatchesSelection
-                ? t("panel.whyTitle")
-                : t("panel.whyPeakTitle")}
+      {((activeDailyRecord && isRiskProduct) || (series && (series.daily.length > 0 || series.hourly.length > 0))) && (
+        <details className="disclosure">
+          <summary>{t("panel.howItWorksTitle")}</summary>
+          <div className="disclosure-content">
+            {activeDailyRecord && isRiskProduct && (
+              <div>
+                <div className="section-title">
+                  {layer === "daily_peak_risk"
+                    ? t("panel.whyTitleToday")
+                    : explanationMatchesSelection
+                      ? t("panel.whyTitle")
+                      : t("panel.whyPeakTitle")}
+                </div>
+                {layer === "current_risk" && !explanationMatchesSelection && peakPeriod && (
+                  <p className="explanation-scope-note">
+                    {t("panel.explanationForPeak", { period: t(`daypartOn.${peakPeriod}` as I18nKey) })}
+                  </p>
+                )}
+                <p style={{ margin: 0, fontSize: "0.9rem" }}>{activeDailyRecord.explanation.summary}</p>
+                <ul className="factor-list">
+                  {activeDailyRecord.explanation.positive_factors.map((f) => (
+                    <li className="positive" key={f.key}>
+                      <span className="sign">+</span> {f.label}
+                    </li>
+                  ))}
+                  {activeDailyRecord.explanation.negative_factors.map((f) => (
+                    <li className="negative" key={f.key}>
+                      <span className="sign">-</span> {f.label}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {series && series.daily.length > 0 && (
+              <div>
+                <div className="section-title">{t("panel.next7days")}</div>
+                <Suspense fallback={<ChartSkeleton />}>
+                  <SevenDayChart daily={series.daily} activityMultiplier={activityMultiplier} combination={manifest?.combination} />
+                </Suspense>
+              </div>
+            )}
+
+            {series && series.hourly.length > 0 && (
+              <div>
+                <div className="section-title">{t("panel.next48h")}</div>
+                <Suspense fallback={<ChartSkeleton />}>
+                  <HourlyChart hourly={series.hourly} activityMultiplier={activityMultiplier} combination={manifest?.combination} />
+                </Suspense>
+              </div>
+            )}
           </div>
-          {layer === "current_risk" && !explanationMatchesSelection && peakPeriod && (
-            <p className="explanation-scope-note">
-              {t("panel.explanationForPeak", { period: t(`daypartOn.${peakPeriod}` as I18nKey) })}
+        </details>
+      )}
+
+      <details className="disclosure">
+        <summary>{t("panel.detailsTitle")}</summary>
+        <div className="disclosure-content technical-section">
+          <p className="model-disclaimer">{t("panel.modelDisclaimer")}</p>
+
+          {(isRiskProduct || isAbundanceLayer) && (
+            <p className="index-line">{t("panel.indexLabel", { value: formatScore(displayValue) })}</p>
+          )}
+
+          {isRiskProduct && (
+            <p style={{ fontSize: "0.78rem", color: "var(--color-text-muted)" }}>
+              {t("panel.activityAdjusted", { activity: t(`activity.${activity}` as I18nKey) })}
             </p>
           )}
-          <p style={{ margin: 0, fontSize: "0.9rem" }}>{activeDailyRecord.explanation.summary}</p>
-          <ul className="factor-list">
-            {activeDailyRecord.explanation.positive_factors.map((f) => (
-              <li className="positive" key={f.key}>
-                <span className="sign">+</span> {f.label}
-              </li>
-            ))}
-            {activeDailyRecord.explanation.negative_factors.map((f) => (
-              <li className="negative" key={f.key}>
-                <span className="sign">-</span> {f.label}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
 
-      {series && series.daily.length > 0 && (
-        <div>
-          <div className="section-title">{t("panel.next7days")}</div>
-          <Suspense fallback={<ChartSkeleton />}>
-            <SevenDayChart daily={series.daily} activityMultiplier={activityMultiplier} combination={manifest?.combination} />
-          </Suspense>
-        </div>
-      )}
+          {reportAdjustment.applied && (
+            <p style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
+              {t("panel.modelEstimate", {
+                model: formatScore(reportAdjustment.modelRisk),
+                count: reportSummary?.report_count ?? 0,
+                adjusted: formatScore(reportAdjustment.adjustedRisk),
+                weight: Math.round(reportAdjustment.weight * 100),
+              })}
+            </p>
+          )}
 
-      {series && series.hourly.length > 0 && (
-        <div>
-          <div className="section-title">{t("panel.next48h")}</div>
-          <Suspense fallback={<ChartSkeleton />}>
-            <HourlyChart hourly={series.hourly} activityMultiplier={activityMultiplier} combination={manifest?.combination} />
-          </Suspense>
+          <div className="subscore-grid">
+            <SubscoreCard label={t("panel.population")} value={activeRecord.population_potential} />
+            <SubscoreCard label={t("panel.activity")} value={activeRecord.biting_activity} />
+            <SubscoreCard
+              label={t("panel.exposure")}
+              value={exposureForActivity(activeRecord.base_exposure_fraction, activityMultiplier)}
+            />
+          </div>
+
+          <div>
+            <div className="section-title">{t("panel.dataQualityTitle")}</div>
+            <div className="quality-row">
+              <DataQualityMeter activeIndex={dqIndex} />
+              <span className="quality-label">{dqLabel}</span>
+            </div>
+            <p className="quality-explain">{t("panel.dataQualityExplain")}</p>
+          </div>
         </div>
-      )}
+      </details>
 
       <div className="button-row">
         <button type="button" className="button primary" onClick={() => setReportOpen(true)}>

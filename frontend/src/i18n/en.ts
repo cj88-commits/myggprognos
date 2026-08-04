@@ -64,6 +64,29 @@ const en: Partial<I18nDict> = {
     "This is a model-calculated risk index based on weather and environmental conditions. It is not a measured mosquito count.",
   "panel.next7days": "Next 7 days",
   "panel.next48h": "Next 48 hours",
+
+  "panel.adviceTitle": "What should I do?",
+  "panel.advice.very_low": "Good time for a walk or other outdoor activity.",
+  "panel.advice.low": "Low risk for most outdoor activities.",
+  "panel.advice.moderate": "Consider mosquito repellent if you're sensitive or staying out long.",
+  "panel.advice.high": "Bring repellent and consider covering up.",
+  "panel.advice.very_high": "Avoid wetlands and forest if possible. Use repellent.",
+
+  "panel.timelineTitle": "Through the day",
+  "panel.cardsTitle": "Coming days",
+  "panel.cardToday": "Today",
+  "panel.cardTomorrow": "Tomorrow",
+  "panel.cardPeak": "Peak at {time}",
+  "panel.cardPeakUnknown": "Peak unknown",
+
+  "panel.howItWorksTitle": "How does the forecast work?",
+  "panel.detailsTitle": "Technical details",
+
+  "sheet.expand": "Show more",
+  "sheet.collapse": "Show less",
+  "sheet.swipeUp": "Swipe up",
+  "sheet.dragHandleLabel": "Drag to show more or less of the forecast panel",
+
   "panel.reportButton": "Report mosquitoes here",
   "panel.shareButton": "Share this view",
   "panel.shareCopied": "Link copied!",

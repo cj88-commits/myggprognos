@@ -3,6 +3,7 @@ import { ControlBar } from "./components/ControlBar";
 import { Legend } from "./components/Legend";
 import { StatusBanner } from "./components/StatusBanner";
 import { LocationPanel } from "./components/LocationPanel";
+import { BottomSheet, type SheetState } from "./components/BottomSheet";
 import { useCells, useDailyForDate, useHourlyForHour, useLocationSeries, useManifest, usePlaces } from "./hooks/useForecastData";
 import { useI18n } from "./i18n";
 import { nearestCell, nearestPlace } from "./lib/api";
@@ -64,6 +65,12 @@ export default function App() {
   const [animating, setAnimating] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
+  // Mobile bottom sheet (item 1) -- irrelevant on desktop, which keeps the
+  // static side panel regardless of this value (see BottomSheet.tsx / the
+  // 860px breakpoint in global.css). Starts half-open so a first-time
+  // visitor sees the answer immediately without having to discover the
+  // sheet exists.
+  const [sheetState, setSheetState] = useState<SheetState>("half");
 
   const dayOptions = useMemo(() => {
     const start = manifest?.forecast_start ?? new Date().toISOString().slice(0, 10);
@@ -171,6 +178,10 @@ export default function App() {
   function handleSelectLocation(lat: number, lon: number, label?: string) {
     setSelectedLat(lat);
     setSelectedLon(lon);
+    // A freshly chosen location is exactly what the sheet exists to show --
+    // if the user had collapsed it (e.g. to look at the map), bring it back
+    // to at least half-open rather than leaving the new result hidden.
+    setSheetState((s) => (s === "closed" ? "half" : s));
     if (label) {
       setPlaceName(label);
       return;
@@ -264,6 +275,7 @@ export default function App() {
             abundanceThresholds={manifest?.thresholds?.abundance}
             onSelectLocation={(lat, lon) => handleSelectLocation(lat, lon)}
             userLocation={userLocation}
+            onBackgroundTap={() => setSheetState("closed")}
           />
         </Suspense>
 
@@ -304,7 +316,7 @@ export default function App() {
         )}
       </div>
 
-      <div className="panel-area">
+      <BottomSheet state={sheetState} onStateChange={setSheetState}>
         <LocationPanel
           placeName={placeName || t("panel.defaultLocationLabel")}
           latitude={selectedLat}
@@ -326,7 +338,7 @@ export default function App() {
           onShare={handleShare}
           shareCopied={shareCopied}
         />
-      </div>
+      </BottomSheet>
     </div>
   );
 }

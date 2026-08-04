@@ -105,6 +105,13 @@ export interface MapViewProps {
   onSelectLocation: (lat: number, lon: number) => void;
   userLocation: { lat: number; lon: number } | null;
   reportMarkers?: { lat: number; lon: number; severity: number }[];
+  // Fired only when a click hits no grid cell (open sea, outside coverage,
+  // gaps between cells) -- distinct from a normal cell selection. Used to
+  // collapse the mobile bottom sheet so the map is unobstructed (item 5:
+  // "tapping empty map should collapse the sheet"); a tap that DOES select
+  // a forecast cell should keep/expand the sheet, since that's the whole
+  // point of tapping it.
+  onBackgroundTap?: () => void;
 }
 
 const EMPTY_FEATURE_COLLECTION: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
@@ -119,6 +126,7 @@ export function MapView({
   onSelectLocation,
   userLocation,
   reportMarkers = [],
+  onBackgroundTap,
 }: MapViewProps) {
   const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -284,6 +292,7 @@ export function MapView({
         const features = map.queryRenderedFeatures(e.point, { layers: ["cells-heat"] });
         if (features.length === 0) {
           onSelectLocation(e.lngLat.lat, e.lngLat.lng);
+          onBackgroundTap?.();
         }
       });
       map.on("mousemove", "cells-heat", (e) => {
