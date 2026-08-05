@@ -18,7 +18,7 @@ const sv = {
   "controlBar.layer": "Kartvy",
   "controlBar.useMyLocation": "Använd min plats",
   "controlBar.playPause": "Spela upp/pausa timanimering",
-  "controlBar.filters": "Fler inställningar",
+  "controlBar.filters": "Inställningar",
   "controlBar.closeFilters": "Stäng",
 
   "daypart.morning": "Morgon",

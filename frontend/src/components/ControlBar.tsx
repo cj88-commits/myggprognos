@@ -64,13 +64,14 @@ export function ControlBar({
 
   const { locate, loading: locating, error: geoError } = useGeolocation(onSelectLocation);
 
-  // "Fler installningar" -- activity profile + map view are secondary
-  // controls, tucked behind a disclosure instead of sitting inline in the
-  // primary toolbar (item 5: reduce the always-visible surface to search /
-  // day / time, the primary workflow). Same open/close state drives both
-  // the desktop dropdown and the mobile bottom sheet (see .filters-panel /
-  // .filters-toggle in global.css) -- only the positioning differs by
-  // media query, not the mechanism.
+  // Desktop keeps every control inline (unchanged) behind "Fler
+  // installningar" for just activity/map-view, same as before. Mobile
+  // collapses everything except search behind a single settings sheet --
+  // the map itself was too cluttered with buttons to pan/zoom reliably
+  // (confirmed by the user on a real phone). Same open/close state drives
+  // both; only which controls live inline vs. inside the sheet differs by
+  // breakpoint (see .control-bar-inline / .control-bar-sheet-only in
+  // global.css).
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   function formatDateLabel(dateIso: string): string {
@@ -82,18 +83,24 @@ export function ControlBar({
   // shown to a user -- always Europe/Stockholm (item 4: never show UTC).
   const stockholmHour =
     isHourlyDay && hour !== null ? formatStockholmHourShort(`${date}T${String(hour).padStart(2, "0")}`, locale) : "";
-  // Compact summary shown on the "Fler installningar" toggle so current
-  // activity/map-view state is visible without opening the panel -- e.g.
-  // "Allmänt · Myggrisk".
+  // Compact summary shown on the settings toggle (desktop only -- see
+  // .filters-toggle-summary, hidden on mobile where the button is icon-only)
+  // so current activity/map-view state is visible without opening the panel.
   const advancedSummary = `${t(`activity.${activity}` as I18nKey)} · ${t(`layer.${layer}` as I18nKey)}`;
 
-  return (
-    <div className="control-bar">
-      <div className="control-group control-group-search">
-        <SearchBox places={places} onSelect={(lat, lon) => onSelectLocation(lat, lon)} />
-      </div>
-
-      <div className="control-group">
+  // Locate button + product switch + day + hour/daypart: rendered once
+  // inline for desktop (idSuffix "") and once again inside the mobile
+  // settings sheet (idSuffix "-mobile") -- CSS shows exactly one copy per
+  // breakpoint (see .control-bar-inline / .control-bar-sheet-only), never
+  // both. A shared function instead of writing this twice by hand; id
+  // suffixes keep the two copies' <label htmlFor>/<select id> pairs valid
+  // (DOM ids must be unique even though only one copy is ever visible).
+  function renderCoreControls(idSuffix: string) {
+    const dateId = `date-select${idSuffix}`;
+    const hourId = `hour-select${idSuffix}`;
+    const daypartId = `daypart-select${idSuffix}`;
+    return (
+      <>
         <button
           type="button"
           className="icon-button"
@@ -103,74 +110,82 @@ export function ControlBar({
         >
           {locating ? "…" : "📍"}
         </button>
-      </div>
 
-      {/* The three named products (Myggläge / Myggrisk idag / Myggrisk just
-          nu) are the primary, always-visible way to switch what the map
-          means -- not tucked behind "Fler installningar" like
-          biting_activity/confidence still are (see the advanced "Kartvy"
-          select below, which lists all five for completeness). */}
-      <div className="control-group product-switch" role="group" aria-label={t("controlBar.layer")}>
-        {PRIMARY_PRODUCT_KEYS.map((key) => (
-          <button
-            key={key}
-            type="button"
-            className="option-chip"
-            aria-pressed={layer === key}
-            onClick={() => onLayerChange(key)}
-          >
-            {t(`layer.${key}` as I18nKey)}
-          </button>
-        ))}
-      </div>
-
-      <div className="control-group">
-        <label htmlFor="date-select">{t("controlBar.day")}</label>
-        <select id="date-select" value={date} onChange={(e) => onDateChange(e.target.value)}>
-          {dayOptions.map((d, i) => (
-            <option key={d} value={d}>
-              {i === 0 ? t("controlBar.today") : formatDateLabel(d)}
-            </option>
+        <div className="control-group product-switch" role="group" aria-label={t("controlBar.layer")}>
+          {PRIMARY_PRODUCT_KEYS.map((key) => (
+            <button
+              key={key}
+              type="button"
+              className="option-chip"
+              aria-pressed={layer === key}
+              onClick={() => onLayerChange(key)}
+            >
+              {t(`layer.${key}` as I18nKey)}
+            </button>
           ))}
-        </select>
-      </div>
-
-      {isHourlyDay ? (
-        <div className="control-group">
-          <label htmlFor="hour-select">{t("controlBar.hour")}</label>
-          <input
-            id="hour-select"
-            type="range"
-            min={0}
-            max={23}
-            step={1}
-            value={hour ?? 0}
-            onChange={(e) => onHourChange(parseInt(e.target.value, 10))}
-            aria-valuetext={stockholmHour}
-          />
-          <span aria-hidden="true">{stockholmHour}</span>
-          <button
-            type="button"
-            className="icon-button"
-            aria-pressed={animating}
-            onClick={onToggleAnimation}
-            title={t("controlBar.playPause")}
-          >
-            {animating ? "⏸" : "▶"}
-          </button>
         </div>
-      ) : (
+
         <div className="control-group">
-          <label htmlFor="daypart-select">{t("controlBar.timeOfDay")}</label>
-          <select id="daypart-select" value={daypart} onChange={(e) => onDaypartChange(e.target.value)}>
-            {DAYPARTS.map((part) => (
-              <option key={part} value={part}>
-                {t(`daypart.${part}` as I18nKey)}
+          <label htmlFor={dateId}>{t("controlBar.day")}</label>
+          <select id={dateId} value={date} onChange={(e) => onDateChange(e.target.value)}>
+            {dayOptions.map((d, i) => (
+              <option key={d} value={d}>
+                {i === 0 ? t("controlBar.today") : formatDateLabel(d)}
               </option>
             ))}
           </select>
         </div>
-      )}
+
+        {isHourlyDay ? (
+          <div className="control-group">
+            <label htmlFor={hourId}>{t("controlBar.hour")}</label>
+            <input
+              id={hourId}
+              type="range"
+              min={0}
+              max={23}
+              step={1}
+              value={hour ?? 0}
+              onChange={(e) => onHourChange(parseInt(e.target.value, 10))}
+              aria-valuetext={stockholmHour}
+            />
+            <span aria-hidden="true">{stockholmHour}</span>
+            <button
+              type="button"
+              className="icon-button"
+              aria-pressed={animating}
+              onClick={onToggleAnimation}
+              title={t("controlBar.playPause")}
+            >
+              {animating ? "⏸" : "▶"}
+            </button>
+          </div>
+        ) : (
+          <div className="control-group">
+            <label htmlFor={daypartId}>{t("controlBar.timeOfDay")}</label>
+            <select id={daypartId} value={daypart} onChange={(e) => onDaypartChange(e.target.value)}>
+              {DAYPARTS.map((part) => (
+                <option key={part} value={part}>
+                  {t(`daypart.${part}` as I18nKey)}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  return (
+    <div className="control-bar">
+      <div className="control-group control-group-search">
+        <SearchBox places={places} onSelect={(lat, lon) => onSelectLocation(lat, lon)} />
+      </div>
+
+      {/* Desktop: identical to the pre-redesign inline layout (display:contents
+          makes these direct flex items of .control-bar). Mobile hides this
+          whole block -- the same controls reappear inside the sheet below. */}
+      <div className="control-bar-inline">{renderCoreControls("")}</div>
 
       <button
         type="button"
@@ -178,7 +193,11 @@ export function ControlBar({
         onClick={() => setAdvancedOpen((v) => !v)}
         aria-haspopup="dialog"
         aria-expanded={advancedOpen}
+        aria-label={t("controlBar.filters")}
       >
+        <span className="filters-toggle-icon" aria-hidden="true">
+          ⚙
+        </span>
         <span className="filters-toggle-label">{t("controlBar.filters")}</span>
         <span className="filters-toggle-summary">{advancedSummary}</span>
       </button>
@@ -199,6 +218,11 @@ export function ControlBar({
             ✕
           </button>
         </div>
+
+        {/* Mobile only: on desktop these are already shown inline above via
+            .control-bar-inline, so this second copy stays display:none there
+            (see global.css) and only appears inside the mobile breakpoint. */}
+        <div className="control-bar-sheet-only">{renderCoreControls("-mobile")}</div>
 
         <div className="control-group">
           <label htmlFor="activity-select">{t("controlBar.activity")}</label>

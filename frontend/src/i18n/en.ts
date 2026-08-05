@@ -16,7 +16,7 @@ const en: Partial<I18nDict> = {
   "controlBar.activity": "Activity",
   "controlBar.layer": "Map view",
   "controlBar.useMyLocation": "Use my location",
-  "controlBar.filters": "More settings",
+  "controlBar.filters": "Settings",
   "controlBar.closeFilters": "Close",
 
   "layer.daily_peak_risk": "Mosquito risk today",

@@ -155,7 +155,17 @@ a {
   flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
-  z-index: 10;
+  /* Must outrank .bottom-sheet's z-index (45): .control-bar's own
+     position:absolute + z-index makes it a stacking context, and
+     .filters-panel/.filters-backdrop are DOM descendants of it -- their
+     own z-index:50/40 only resolves *within* that context, capped by
+     .control-bar's z-index the moment it's compared against anything
+     outside it (position:fixed does not escape an ancestor's stacking
+     context, only its containing block for layout). At the old z-index:10,
+     the settings sheet silently painted BEHIND the (also always-present)
+     location bottom sheet -- confirmed live via elementFromPoint() hit-
+     testing, not just a visual guess. */
+  z-index: 46;
   pointer-events: none;
 }
 
@@ -163,12 +173,27 @@ a {
   pointer-events: auto;
 }
 
-/* "Fler installningar" (advanced settings: activity profile + map view) --
-   collapsed behind this toggle on both desktop and mobile (item 5: keep the
-   always-visible toolbar to just search/day/time). .filters-panel opens as
-   a small dropdown under this button on desktop and as a bottom sheet on
-   mobile (see the @media (max-width: 860px) block below); same open/close
-   state drives both, only the positioning differs. */
+/* Desktop: "Instellningar" collapses only activity profile + map view
+   (advanced settings) behind this toggle, same as before -- every other
+   control (search, locate-me, product switch, day, hour/daypart) stays
+   inline via .control-bar-inline (display:contents below, so those
+   controls are ordinary flex items of .control-bar on desktop).
+   Mobile: the map had too many always-visible buttons to pan/zoom
+   reliably (confirmed on a real phone), so this same toggle instead opens
+   ALL controls as one bottom sheet -- .control-bar-inline is hidden and
+   .control-bar-sheet-only (a second copy of the same controls) is shown
+   inside .filters-panel instead. See the @media (max-width: 860px) blocks
+   below for exactly which controls live where per breakpoint. */
+.control-bar-inline {
+  display: contents;
+}
+.control-bar-sheet-only {
+  display: none;
+}
+.filters-toggle-icon {
+  display: none;
+}
+
 .filters-toggle {
   display: flex;
   align-items: baseline;
@@ -253,8 +278,36 @@ a {
    every mobile filters-* override in one block placed after its
    defaults avoids reintroducing that bug here. */
 @media (max-width: 860px) {
+  /* The always-visible mobile toolbar is now just search + this one icon
+     button -- everything else moves into the sheet below. */
+  .control-bar-inline {
+    display: none;
+  }
+  .control-bar-sheet-only {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+  .control-bar-sheet-only .product-switch {
+    flex-wrap: wrap;
+  }
   .filters-toggle {
     display: flex;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    justify-content: center;
+    align-items: center;
+    flex: 0 0 auto;
+  }
+  .filters-toggle-icon {
+    display: block;
+    font-size: 1.2rem;
+    line-height: 1;
+  }
+  .filters-toggle-label,
+  .filters-toggle-summary {
+    display: none;
   }
   .filters-panel-header {
     display: flex;
@@ -267,6 +320,14 @@ a {
   .filters-panel {
     display: none;
     position: fixed;
+    /* The desktop rule above sets top: calc(100% + 0.4rem) for its
+       anchored-dropdown positioning; without resetting it here too, a
+       fixed-position element with BOTH top and bottom set gets its height
+       computed from the gap between them instead of its content -- on a
+       real phone that collapses this sheet to ~0px tall (confirmed live:
+       content rendered but invisible below the fold). auto restores normal
+       content-based height for the bottom-anchored sheet. */
+    top: auto;
     left: 0;
     right: 0;
     bottom: 0;
