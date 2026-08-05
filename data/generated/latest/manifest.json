@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-08-05T02:56:42Z",
+  "generated_at": "2026-08-05T08:45:05Z",
   "model_version": "0.1.0",
   "forecast_start": "2026-08-05",
   "forecast_end": "2026-08-11",
-  "hourly_until": "2026-08-07T02:00:00Z",
+  "hourly_until": "2026-08-07T08:00:00Z",
   "cell_count": 23194,
   "data_quality": "normal",
   "daily_files": [
@@ -16,12 +16,6 @@
     "daily/2026-08-11.json.gz"
   ],
   "hourly_files": [
-    "hourly/2026-08-05T02.json.gz",
-    "hourly/2026-08-05T03.json.gz",
-    "hourly/2026-08-05T04.json.gz",
-    "hourly/2026-08-05T05.json.gz",
-    "hourly/2026-08-05T06.json.gz",
-    "hourly/2026-08-05T07.json.gz",
     "hourly/2026-08-05T08.json.gz",
     "hourly/2026-08-05T09.json.gz",
     "hourly/2026-08-05T10.json.gz",
@@ -64,7 +58,13 @@
     "hourly/2026-08-06T23.json.gz",
     "hourly/2026-08-07T00.json.gz",
     "hourly/2026-08-07T01.json.gz",
-    "hourly/2026-08-07T02.json.gz"
+    "hourly/2026-08-07T02.json.gz",
+    "hourly/2026-08-07T03.json.gz",
+    "hourly/2026-08-07T04.json.gz",
+    "hourly/2026-08-07T05.json.gz",
+    "hourly/2026-08-07T06.json.gz",
+    "hourly/2026-08-07T07.json.gz",
+    "hourly/2026-08-07T08.json.gz"
   ],
   "activities": {
     "general": 1.0,
