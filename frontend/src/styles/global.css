@@ -132,6 +132,16 @@ a {
   .search-box {
     min-width: 0;
   }
+  /* MapLibre's own zoom control is positioned independently of our
+     .control-bar (its own "top-right" anchor, ~10px from the edges) --
+     now that the mobile bar is just search + the settings icon (both
+     hugging the top edge), the settings button and the zoom control both
+     want the same corner and sit directly on top of each other (confirmed
+     live via getBoundingClientRect on both). Push the zoom control down
+     to clear the bar instead of relying on coincidental spacing. */
+  .maplibregl-ctrl-top-right {
+    margin-top: 64px;
+  }
   .legend {
     padding: 0.4rem 0.55rem;
   }
@@ -551,6 +561,20 @@ a {
 .search-box {
   position: relative;
   min-width: 220px;
+  /* Without its own z-index, .search-box isn't a stacking context, so
+     .search-results (z-index:30) is compared flatly against every other
+     .control-bar descendant -- including .filters-toggle, which has no
+     z-index of its own (position:static) but DOES set backdrop-filter.
+     Confirmed live (elementFromPoint): that backdrop-filter alone is
+     enough for Chromium to paint .filters-toggle's implicit compositing
+     layer above the results dropdown whenever the control bar wraps and
+     the toggle ends up overlapping it, even though .filters-toggle has no
+     explicit z-index and shouldn't out-rank a positioned z-index:30
+     element by spec. Giving .search-box its own stacking context here
+     sidesteps that entirely -- everything inside it (results included) is
+     now compared as a whole against .filters-toggle, unambiguously above.
+  */
+  z-index: 35;
 }
 
 .search-results {
