@@ -1,6 +1,10 @@
 export interface Manifest {
   generated_at: string;
   model_version: string;
+  // Exact source commit this run's code came from (docs/wind-calm-
+  // investigation.md item 11); "unknown" if it couldn't be resolved.
+  // Optional -- older manifests predate this field.
+  build_sha?: string;
   forecast_start: string;
   forecast_end: string;
   hourly_until: string;
@@ -58,6 +62,13 @@ export interface ScoreFields {
   mosquito_abundance?: number;
   activity_modifier?: number;
   exposure_modifier?: number;
+  // Forecast context (docs/wind-calm-investigation.md item 10) -- used to
+  // attach exactly what the model knew to a user report at submission
+  // time. Optional because older cached/offline manifests won't have them.
+  forecast_wind_ms?: number;
+  effective_wind_ms?: number;
+  temperature_c?: number;
+  humidity_pct?: number;
 }
 
 export interface ExplanationFactor {

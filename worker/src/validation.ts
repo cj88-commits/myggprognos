@@ -76,6 +76,33 @@ export function validateReportInput(body: unknown): ValidationResult {
     errors.push("model_version must be a short string");
   }
 
+  // Forecast context (docs/wind-calm-investigation.md item 10) -- all
+  // optional, loosely bounded to plausible physical ranges rather than
+  // tightly validated against the model's own scale, since this is
+  // diagnostic metadata the client already computed, not a value this API
+  // recomputes or trusts for scoring.
+  if (b.forecast_wind_ms !== undefined && (!isFiniteNumber(b.forecast_wind_ms) || b.forecast_wind_ms < 0 || b.forecast_wind_ms > 100)) {
+    errors.push("forecast_wind_ms must be a non-negative number");
+  }
+  if (b.effective_wind_ms !== undefined && (!isFiniteNumber(b.effective_wind_ms) || b.effective_wind_ms < 0 || b.effective_wind_ms > 100)) {
+    errors.push("effective_wind_ms must be a non-negative number");
+  }
+  if (b.temperature_c !== undefined && (!isFiniteNumber(b.temperature_c) || b.temperature_c < -60 || b.temperature_c > 60)) {
+    errors.push("temperature_c must be a plausible temperature");
+  }
+  if (b.humidity_pct !== undefined && (!isFiniteNumber(b.humidity_pct) || b.humidity_pct < 0 || b.humidity_pct > 100)) {
+    errors.push("humidity_pct must be a number between 0 and 100");
+  }
+  if (b.population_potential !== undefined && (!isFiniteNumber(b.population_potential) || b.population_potential < 0 || b.population_potential > 100)) {
+    errors.push("population_potential must be a number between 0 and 100");
+  }
+  if (b.biting_activity !== undefined && (!isFiniteNumber(b.biting_activity) || b.biting_activity < 0 || b.biting_activity > 100)) {
+    errors.push("biting_activity must be a number between 0 and 100");
+  }
+  if (b.target_timestamp !== undefined && (typeof b.target_timestamp !== "string" || Number.isNaN(Date.parse(b.target_timestamp)))) {
+    errors.push("target_timestamp must be a valid ISO8601 timestamp string");
+  }
+
   if (errors.length > 0) {
     return { ok: false, errors };
   }
@@ -94,6 +121,13 @@ export function validateReportInput(body: unknown): ValidationResult {
       comment: b.comment as string | undefined,
       forecast_score: b.forecast_score as number | undefined,
       model_version: b.model_version as string | undefined,
+      forecast_wind_ms: b.forecast_wind_ms as number | undefined,
+      effective_wind_ms: b.effective_wind_ms as number | undefined,
+      temperature_c: b.temperature_c as number | undefined,
+      humidity_pct: b.humidity_pct as number | undefined,
+      population_potential: b.population_potential as number | undefined,
+      biting_activity: b.biting_activity as number | undefined,
+      target_timestamp: b.target_timestamp as string | undefined,
     },
   };
 }

@@ -6,7 +6,7 @@
 # behaviour can be reviewed and adjusted without touching code.
 
 model:
-  version: "0.2.0"
+  version: "0.1.0-candidate-high-uplift"
 
   # Base temperature (Celsius) above which mosquito development accumulates.
   development_base_temperature_c: 10
@@ -98,10 +98,10 @@ model:
     calm_steepness: 1.6
     population_gate_midpoint: 15.0
     population_gate_steepness: 0.25
-    max_calm_uplift: 1.4
+    max_calm_uplift: 1.55
     release_drop_ms: 2.5
-    max_release_multiplier: 1.2
-    max_combined_multiplier: 1.7
+    max_release_multiplier: 1.3
+    max_combined_multiplier: 1.8
 
   # How population/activity/exposure combine into the final 0-100 risk.
   # Population is the biological gate (no mosquitoes -> no risk regardless

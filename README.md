@@ -49,6 +49,19 @@ colours (see `frontend/src/lib/riskModel.ts::RISK_COLOR_STOPS`).
 A **confidence** score (0–100, shown as Låg/Medel/Hög) reflects forecast horizon, weather data completeness,
 static data quality, and agreement between the three components — see `forecast/src/confidence.py`.
 
+### Three named products
+
+The frontend switches the map between three named products (all published per cell/hour/day; see
+[Generated output format](#generated-output-format)), not just the single "Myggrisk" combined score above:
+
+| Product (sv) | Field | Meaning |
+|---|---|---|
+| **Myggläge** | `population_potential` | How favourable conditions have been for mosquitoes to be present at all, independent of the current hour's weather — built from recent rainfall/temperature/moisture/habitat, not wind or time of day. Uses its own category thresholds (`thresholds.abundance` in the manifest), not the risk bands above — see "What the score means" and `docs/model-audit-after.md`. |
+| **Myggrisk idag** | `daily_peak_risk` | The day's *highest* expected nuisance risk, regardless of which hour the page happens to be loaded — the default product. |
+| **Myggrisk just nu** | `current_risk` | The risk at whichever hour/daypart is currently selected — the same 0–100 scale and category bands as "Myggrisk idag", just evaluated at a specific moment instead of the day's peak. |
+
+Two further layers (`biting_activity`, `confidence`) are available under "Fler inställningar"/the settings sheet for anyone who wants the raw activity component or the data-quality score directly, rather than as one of the three primary products above.
+
 ### Population potential factors
 
 Population potential now combines: recent and cumulative rainfall (1/3/7/14/21-day sums), average and
@@ -57,6 +70,24 @@ direct measurements aren't available), wind, spring snowmelt, forest and wetland
 density, and **standing-water persistence** — a decay-weighted combination of recent rainfall, terrain
 drainage (slope), and nearby wetlands/lakes estimating how long rain-fed breeding pools are likely to last
 (see `forecast/src/feature_engineering.py::_standing_water_persistence`).
+
+### Wind: forecast wind, effective (shelter-adjusted) wind, and the calm-evening/wind-drop correction
+
+Biting activity's wind response has two layers (see `docs/wind-calm-investigation.md` for the full
+investigation this came from):
+
+1. **Base suppression** (unchanged from earlier versions): a smooth curve on the provider's own raw
+   forecast wind — more wind means less biting activity, `model.yaml activity.wind_half_suppression_ms` /
+   `wind_full_suppression_ms`.
+2. **A targeted calm-evening / wind-drop correction** on top of that, gated by `wind_speed_effective_ms`
+   (`forecast/src/feature_engineering.py::compute_effective_wind` — the forecast wind adjusted by a bounded,
+   configurable multiplier from static terrain shelter: forest/urban cover reduce it, coastal exposure
+   increases it) rather than the raw forecast value, plus 1h/3h wind history. This specifically addresses two
+   real gaps: exposed meteorological wind isn't what a person in a sheltered spot actually feels, and a
+   memoryless model can't distinguish "calm all day" from mosquitoes emerging right after a gust dies down.
+   Both `forecast_wind_ms` and `effective_wind_ms` are published per record (never presented as measured
+   local wind) — see `model.yaml wind_shelter:` / `wind_dynamics:` for the exact formula and configurable
+   thresholds/caps.
 
 ### Explainability
 
@@ -95,6 +126,10 @@ faithful to the actual calculation, not a plausible-sounding guess.
   blended in as a small, capped adjustment on top of the model — see [User reports](#user-reports-1).
 - **The rule-based model is a first version**, not a validated entomological model. Weights in
   `forecast/model.yaml` are reasonable priors, not fitted/calibrated coefficients.
+- **"Effective wind" is a coarse static-terrain estimate, not measured local wind**, and the calm-evening/
+  wind-drop correction's thresholds are reasoned defaults checked against nationwide score distribution
+  shape, not fitted against labelled real-world nuisance observations — see
+  `docs/wind-calm-investigation.md` for the full investigation, evidence, and stated limitations.
 
 ## Architecture
 
@@ -127,8 +162,8 @@ generous; both weather sources are free and keyless).
 
 ```
 data/generated/latest/
-  manifest.json          # generated_at, forecast window, file listing, model version, activity multipliers,
-                          # series_shard_count / series_files
+  manifest.json          # generated_at, forecast window, file listing, model version, build_sha,
+                          # activity multipliers, series_shard_count / series_files
   cells.json.gz          # static per-cell metadata (id, lat/lon, land-cover fractions)
   daily/YYYY-MM-DD.json.gz     # one file per forecast day, all cells, with dayparts + explanation + explanation_text
   hourly/YYYY-MM-DDTHH.json.gz # one file per hour for the first 48h, all cells
@@ -409,6 +444,13 @@ Reports never dominate the forecast: the Worker returns a `recommended_report_we
 (0 below 3 reports, up to 0.3 above 15 — see `forecast/model.yaml` → `report_adjustment`, mirrored in
 `worker/src/reports.ts` and `frontend/src/lib/reportAdjustment.ts`). The UI shows both the raw model
 estimate and the report-adjusted figure when an adjustment applies.
+
+Every report also stores the forecast context the client had on screen at submission time — forecast wind,
+effective (shelter-adjusted) wind, temperature, humidity, population potential, biting activity, model
+version, and target timestamp (`worker/schema.sql`, migration `0002_wind_diagnostics.sql`) — so a future
+false-negative analysis (e.g. "did calm-wind reports actually coincide with what the model predicted?") can
+be done directly against stored reports instead of needing forecast archives that may no longer be retained.
+See `docs/wind-calm-investigation.md` for the investigation this was added for.
 
 ## Model configuration
 

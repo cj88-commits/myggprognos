@@ -14,6 +14,17 @@ export interface ReportPayload {
   comment?: string;
   forecast_score?: number;
   model_version?: string;
+  // Forecast context at submission time (docs/wind-calm-investigation.md
+  // item 10) -- lets a future false-negative analysis join reports back to
+  // exactly what the model knew, without needing forecast archives that
+  // may no longer be retained.
+  forecast_wind_ms?: number;
+  effective_wind_ms?: number;
+  temperature_c?: number;
+  humidity_pct?: number;
+  population_potential?: number;
+  biting_activity?: number;
+  target_timestamp?: string;
 }
 
 export interface ReportSummary {

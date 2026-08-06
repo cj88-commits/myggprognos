@@ -15,6 +15,17 @@ export interface ReportInput {
   comment?: string;
   forecast_score?: number;
   model_version?: string;
+  // Forecast context at submission time (docs/wind-calm-investigation.md
+  // item 10) -- lets a future analysis join reports back to exactly what
+  // the model knew, without needing generated forecast archives that may
+  // no longer be retained. All optional: older clients never send them.
+  forecast_wind_ms?: number;
+  effective_wind_ms?: number;
+  temperature_c?: number;
+  humidity_pct?: number;
+  population_potential?: number;
+  biting_activity?: number;
+  target_timestamp?: string;
 }
 
 export interface ReportRow {
@@ -30,4 +41,11 @@ export interface ReportRow {
   comment: string | null;
   forecast_score: number | null;
   model_version: string | null;
+  forecast_wind_ms: number | null;
+  effective_wind_ms: number | null;
+  temperature_c: number | null;
+  humidity_pct: number | null;
+  population_potential: number | null;
+  biting_activity: number | null;
+  target_timestamp: string | null;
 }

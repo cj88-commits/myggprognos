@@ -16,6 +16,8 @@ Run via scripts/run_forecast.py. Steps (mirrors the GitHub Actions job):
 from __future__ import annotations
 
 import logging
+import os
+import subprocess
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -24,6 +26,7 @@ from config import (
     FORECAST_DAYS,
     GENERATED_DATA_DIR,
     HOURLY_HORIZON_HOURS,
+    REPO_ROOT,
     SAMPLE_DATA_DIR,
     STATIC_DATA_DIR,
     ModelConfig,
@@ -111,6 +114,27 @@ HISTORY_DAYS_BACK = 21
 CACHE_CHECKPOINT_CHUNK_CELLS = 1000
 
 
+def _resolve_build_sha() -> str:
+    """Best-effort source commit SHA for this build, published in the
+    manifest (docs/wind-calm-investigation.md item 11). Prefers the CI-
+    provided GITHUB_SHA (the exact commit the scheduled workflow checked
+    out) over a local `git rev-parse HEAD` (convenient for local dev runs,
+    but reflects the working tree's current HEAD, not necessarily what
+    ends up published if there are uncommitted changes). Never raises --
+    manifest publishing must not fail just because git/CI metadata is
+    unavailable in some environment."""
+    sha = os.environ.get("GITHUB_SHA")
+    if sha:
+        return sha
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, capture_output=True, text=True, timeout=5, check=True
+        )
+        return result.stdout.strip() or "unknown"
+    except Exception:
+        return "unknown"
+
+
 def _record_from_score(cell_id: str, features, score, confidence_result) -> dict:
     return {
         "cell_id": cell_id,
@@ -128,6 +152,18 @@ def _record_from_score(cell_id: str, features, score, confidence_result) -> dict
         "mosquito_abundance": score.population_potential,
         "activity_modifier": score.activity_modifier,
         "exposure_modifier": score.exposure_modifier,
+        # Forecast context (docs/wind-calm-investigation.md item 10) --
+        # published so the frontend can attach exactly what the model knew
+        # to a user report at submission time, letting a future false-
+        # negative analysis join reports back to their forecast context
+        # without needing generated forecast archives that may no longer
+        # be retained. wind_speed_current_ms is genuinely the wind AT the
+        # record's own target time (see feature_engineering.py), despite
+        # the "current" name -- not real-time "right now" wind.
+        "forecast_wind_ms": features.wind_speed_current_ms,
+        "effective_wind_ms": features.wind_speed_effective_ms,
+        "temperature_c": features.current_temperature_c,
+        "humidity_pct": features.humidity_current_pct,
     }
 
 
@@ -300,6 +336,8 @@ def run_pipeline(
             features = compute_features(
                 static_map[cell.cell_id], weather, target, config.development_base_temperature_c,
                 rolling=rolling_by_cell.get(cell.cell_id),
+                calm_threshold_ms=config.wind_dynamics_params.get("calm_threshold_ms", 1.8),
+                wind_shelter_params=config.wind_shelter_params,
             )
             score = compute_score(features, config, "general")
             horizon_hours = max(0.0, (target - run_time).total_seconds() / 3600.0)
@@ -348,6 +386,8 @@ def run_pipeline(
                 features = compute_features(
                     static_map[cell.cell_id], weather, target, config.development_base_temperature_c,
                     rolling=rolling_by_cell.get(cell.cell_id),
+                    calm_threshold_ms=config.wind_dynamics_params.get("calm_threshold_ms", 1.8),
+                    wind_shelter_params=config.wind_shelter_params,
                 )
                 score = compute_score(features, config, "general")
                 horizon_hours = max(0.0, (target - run_time).total_seconds() / 3600.0)
@@ -474,6 +514,7 @@ def run_pipeline(
             "exposure_floor": 0.75, "exposure_weight": 0.50, "scale": 105,
         },
         thresholds={"abundance": config.abundance_thresholds},
+        build_sha=_resolve_build_sha(),
     )
 
     logger.info("Pipeline complete: %d cells, %d daily files, %d hourly files", len(cells), len(daily_files), len(hourly_files))

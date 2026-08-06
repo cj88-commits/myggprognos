@@ -93,6 +93,31 @@ class FeatureSet:
     wind_gusts_ms: float | None
     evening_wind_ms: float | None
 
+    # Wind history/trend (added for the calm-evening / wind-drop-release
+    # false-negative investigation -- see docs/wind-calm-investigation.md).
+    # All None when there isn't enough history in the series (e.g. the
+    # very first hour of a run) rather than silently defaulting to 0, so
+    # callers can tell "genuinely calm" apart from "no data yet".
+    wind_speed_1h_ago_ms: float | None
+    wind_speed_3h_ago_ms: float | None
+    # current - Nh_ago: negative means wind has DROPPED since then.
+    wind_change_1h_ms: float | None
+    wind_change_3h_ms: float | None
+    # Minimum observed wind over the trailing 3-hour window ending at (and
+    # including) the current hour.
+    wind_min_3h_ms: float | None
+    # Consecutive hours, ending now and counting backward, with wind at or
+    # below `calm_threshold_ms` (see compute_features' parameter of the
+    # same name). Stops counting at the first missing/unknown hour.
+    calm_hours_streak: int
+
+    # Effective (shelter-adjusted) local wind (item 3 of the investigation):
+    # forecast_wind_ms transformed by static terrain shelter (forest/urban/
+    # slope/coastal). This is NOT measured local wind -- see
+    # compute_effective_wind's docstring for the (bounded, configurable)
+    # transform and its stated limitations.
+    wind_speed_effective_ms: float | None
+
     # Humidity
     humidity_current_pct: float | None
     humidity_daily_mean_pct: float | None
@@ -176,6 +201,90 @@ def _parse_times(times: list[str]) -> list[datetime]:
 def _window(parsed_times: list[datetime], series: list[float | None], end: datetime, hours_back: int) -> list[float | None]:
     start = end - timedelta(hours=hours_back)
     return [v for t, v in zip(parsed_times, series) if start <= t <= end]
+
+
+DEFAULT_CALM_THRESHOLD_MS = 1.8
+
+DEFAULT_WIND_SHELTER_PARAMS = {
+    "forest_shelter_weight": 0.35,
+    "urban_shelter_weight": 0.15,
+    "slope_shelter_weight": 0.10,
+    "slope_reference_deg": 10.0,
+    "coastal_exposure_weight": 0.25,
+    "min_multiplier": 0.55,
+    "max_multiplier": 1.15,
+}
+
+# How far back _calm_streak is willing to look, regardless of how long an
+# actual calm spell has run -- bounds the loop cost and keeps the reported
+# streak meaningful ("calm all day" and "calm for 12+ hours" are both
+# already well past the point where one more hour changes the calm-gate's
+# near-saturated sigmoid response in model.py).
+CALM_STREAK_LOOKBACK_HOURS = 12
+
+
+def compute_effective_wind(
+    forecast_wind_ms: float | None,
+    forest_fraction: float,
+    urban_fraction: float,
+    slope_deg: float,
+    coastal_exposure: float,
+    params: dict | None = None,
+) -> float | None:
+    """Estimate the near-ground wind actually experienced at this cell, from
+    the forecast's exposed/meteorological wind plus static terrain shelter
+    (investigation item 2/3 -- see docs/wind-calm-investigation.md). This is
+    a coarse, transparent, BOUNDED adjustment, NOT measured local wind: real
+    micro-siting (a specific sheltered garden vs. an open field 200m away,
+    both inside the same ~5km cell) varies far more than any cell-average
+    static feature captures, and this function does not and cannot know
+    which one a given report refers to.
+
+        shelter_multiplier = clamp(
+            1
+            - forest_shelter_weight * forest_fraction
+            - urban_shelter_weight * urban_fraction
+            - slope_shelter_weight * min(slope_deg, slope_reference_deg) / slope_reference_deg
+            + coastal_exposure_weight * coastal_exposure,
+            min_multiplier, max_multiplier,
+        )
+        effective_wind = forecast_wind * shelter_multiplier
+
+    Forest/urban terrain and gentle local topography reduce wind (multiplier
+    < 1); high coastal exposure increases it (multiplier can exceed 1, up to
+    `max_multiplier`). The clamp means this can never fully zero out or
+    wildly amplify the forecast wind on its own, however sheltered/exposed
+    the static features suggest -- deliberately conservative given how
+    coarse an approximation this is.
+    """
+    if forecast_wind_ms is None:
+        return None
+    p = params or DEFAULT_WIND_SHELTER_PARAMS
+    slope_reference = p.get("slope_reference_deg", 10.0) or 10.0
+    slope_term = min(max(slope_deg or 0.0, 0.0), slope_reference) / slope_reference
+    multiplier = (
+        1.0
+        - p.get("forest_shelter_weight", 0.35) * clamp(forest_fraction, 0.0, 1.0)
+        - p.get("urban_shelter_weight", 0.15) * clamp(urban_fraction, 0.0, 1.0)
+        - p.get("slope_shelter_weight", 0.10) * slope_term
+        + p.get("coastal_exposure_weight", 0.25) * clamp(coastal_exposure, 0.0, 1.0)
+    )
+    multiplier = clamp(multiplier, p.get("min_multiplier", 0.55), p.get("max_multiplier", 1.15))
+    return round(forecast_wind_ms * multiplier, 3)
+
+
+def _calm_streak(values: list[float | None], calm_threshold_ms: float) -> int:
+    """Consecutive hours, counting backward from the LAST element of
+    `values` (chronological, oldest-first, ending at "now"), with wind at or
+    below `calm_threshold_ms`. Stops at the first missing or
+    above-threshold hour -- a single None (no data) does not count as calm,
+    and does not "skip past" to keep counting further back."""
+    streak = 0
+    for v in reversed(values):
+        if v is None or v > calm_threshold_ms:
+            break
+        streak += 1
+    return streak
 
 
 def _daypart(hour: int) -> str:
@@ -394,6 +503,8 @@ def compute_features(
     target_time: datetime,
     development_base_temperature_c: float = 10.0,
     rolling: RollingWindows | None = None,
+    calm_threshold_ms: float = DEFAULT_CALM_THRESHOLD_MS,
+    wind_shelter_params: dict | None = None,
 ) -> FeatureSet:
     if target_time.tzinfo is None:
         target_time = target_time.replace(tzinfo=timezone.utc)
@@ -421,6 +532,43 @@ def compute_features(
     current_gusts = weather.wind_gusts_10m[idx] if idx is not None else None
     current_soil = weather.soil_moisture[idx] if idx is not None else None
     current_precip = weather.precipitation[idx] if idx is not None else 0.0
+
+    # Wind history/trend (investigation items 1/4/5 -- see
+    # docs/wind-calm-investigation.md): plain index lookups into
+    # weather.wind_speed_10m around `idx`, independent of the rolling/
+    # non-rolling branch below (idx is already resolved either way at this
+    # point) since these only ever need a handful of nearby hourly points,
+    # not a full-series cumulative sum.
+    def _wind_at(offset: int) -> float | None:
+        if idx is None:
+            return None
+        i = idx + offset
+        if i < 0 or i >= len(weather.wind_speed_10m):
+            return None
+        return weather.wind_speed_10m[i]
+
+    wind_1h_ago = _wind_at(-1)
+    wind_3h_ago = _wind_at(-3)
+    wind_change_1h = (
+        round(current_wind - wind_1h_ago, 3) if current_wind is not None and wind_1h_ago is not None else None
+    )
+    wind_change_3h = (
+        round(current_wind - wind_3h_ago, 3) if current_wind is not None and wind_3h_ago is not None else None
+    )
+    wind_3h_window = [_wind_at(o) for o in (-2, -1, 0)]
+    wind_3h_window_valid = [v for v in wind_3h_window if v is not None]
+    wind_min_3h = round(min(wind_3h_window_valid), 3) if wind_3h_window_valid else None
+    calm_lookback = [_wind_at(-o) for o in range(CALM_STREAK_LOOKBACK_HOURS - 1, -1, -1)]
+    calm_hours_streak = _calm_streak(calm_lookback, calm_threshold_ms)
+
+    wind_speed_effective_ms = compute_effective_wind(
+        current_wind,
+        static.forest_fraction,
+        static.urban_fraction,
+        static.slope_deg,
+        static.coastal_exposure,
+        wind_shelter_params,
+    )
 
     total_len = len(parsed_times)
 
@@ -665,6 +813,13 @@ def compute_features(
         wind_speed_forecast_ms=wind_forecast,
         wind_gusts_ms=current_gusts,
         evening_wind_ms=evening_wind,
+        wind_speed_1h_ago_ms=wind_1h_ago,
+        wind_speed_3h_ago_ms=wind_3h_ago,
+        wind_change_1h_ms=wind_change_1h,
+        wind_change_3h_ms=wind_change_3h,
+        wind_min_3h_ms=wind_min_3h,
+        calm_hours_streak=calm_hours_streak,
+        wind_speed_effective_ms=wind_speed_effective_ms,
         humidity_current_pct=current_humidity,
         humidity_daily_mean_pct=humidity_daily_mean,
         humidity_evening_pct=evening_humidity,

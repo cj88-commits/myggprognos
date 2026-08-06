@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import pytest
 from feature_engineering import compute_features, daylight_hours, seasonal_suitability_curve
 from model import (
+    _calm_wind_activity_multiplier,
     _daypart_activity_curve,
     bell_curve,
     clamp,
@@ -287,6 +288,111 @@ def test_daypart_activity_curve_polar_night_is_flat_and_moderate():
     b = _daypart_activity_curve(15.0, None, None, is_polar_day=False, is_polar_night=True)
     assert a == b
     assert 0.0 < a < 1.0
+
+
+def _wind_dynamics_features(features, **overrides):
+    return features.__class__(**{**features.__dict__, **overrides})
+
+
+def test_calm_wind_uplift_increases_activity_when_calm_and_favourable(sample_static, synthetic_weather, model_config):
+    features = _features_at(sample_static, synthetic_weather, 20, model_config)
+    calm = _wind_dynamics_features(
+        features, wind_speed_effective_ms=0.5, wind_change_3h_ms=0.0,
+    )
+    multiplier, terms = _calm_wind_activity_multiplier(
+        calm, model_config, population_potential=50.0,
+        temperature_activity=0.9, humidity_activity=0.8, daypart_activity=0.9,
+    )
+    assert multiplier > 1.15
+    assert terms["calm_gate"] > 0.8
+
+
+def test_calm_wind_uplift_stays_near_one_when_windy(sample_static, synthetic_weather, model_config):
+    features = _features_at(sample_static, synthetic_weather, 20, model_config)
+    windy = _wind_dynamics_features(features, wind_speed_effective_ms=10.0, wind_change_3h_ms=0.0)
+    multiplier, terms = _calm_wind_activity_multiplier(
+        windy, model_config, population_potential=50.0,
+        temperature_activity=0.9, humidity_activity=0.8, daypart_activity=0.9,
+    )
+    assert multiplier == pytest.approx(1.0, abs=0.05)
+    assert terms["calm_gate"] < 0.1
+
+
+def test_calm_wind_uplift_suppressed_by_near_zero_population(sample_static, synthetic_weather, model_config):
+    """item 6: calm weather alone must not turn a near-zero-population cell
+    high-risk."""
+    features = _features_at(sample_static, synthetic_weather, 20, model_config)
+    calm = _wind_dynamics_features(features, wind_speed_effective_ms=0.5, wind_change_3h_ms=0.0)
+    multiplier, terms = _calm_wind_activity_multiplier(
+        calm, model_config, population_potential=1.0,
+        temperature_activity=0.9, humidity_activity=0.8, daypart_activity=0.9,
+    )
+    assert multiplier == pytest.approx(1.0, abs=0.08)
+    assert terms["population_gate"] < 0.15
+
+
+def test_calm_wind_uplift_suppressed_when_cold(sample_static, synthetic_weather, model_config):
+    """item 6: a cold calm evening must not be lifted by this correction."""
+    features = _features_at(sample_static, synthetic_weather, 20, model_config)
+    calm = _wind_dynamics_features(features, wind_speed_effective_ms=0.5, wind_change_3h_ms=0.0)
+    multiplier, _ = _calm_wind_activity_multiplier(
+        calm, model_config, population_potential=50.0,
+        temperature_activity=0.05, humidity_activity=0.8, daypart_activity=0.9,
+    )
+    assert multiplier == pytest.approx(1.0, abs=0.08)
+
+
+def test_wind_drop_release_boosts_activity_more_than_steady_calm(sample_static, synthetic_weather, model_config):
+    """The core reported pattern: a cell that JUST went calm (wind dropped
+    materially in the last 3h) should score higher than an otherwise
+    identical cell that's simply been calm all along."""
+    features = _features_at(sample_static, synthetic_weather, 20, model_config)
+    steady_calm = _wind_dynamics_features(features, wind_speed_effective_ms=0.8, wind_change_3h_ms=0.0)
+    just_dropped = _wind_dynamics_features(features, wind_speed_effective_ms=0.8, wind_change_3h_ms=-4.0)
+
+    steady_multiplier, _ = _calm_wind_activity_multiplier(
+        steady_calm, model_config, population_potential=50.0,
+        temperature_activity=0.9, humidity_activity=0.8, daypart_activity=0.9,
+    )
+    drop_multiplier, terms = _calm_wind_activity_multiplier(
+        just_dropped, model_config, population_potential=50.0,
+        temperature_activity=0.9, humidity_activity=0.8, daypart_activity=0.9,
+    )
+    assert drop_multiplier > steady_multiplier
+    assert terms["release_gate"] > 0.5
+
+
+def test_calm_wind_combined_multiplier_is_capped(sample_static, synthetic_weather, model_config):
+    """item 5: a single noisy forecast-hour change cannot produce extreme
+    risk -- even under maximal calm+drop+population+comfort+daypart gates,
+    the combined multiplier never exceeds max_combined_multiplier."""
+    features = _features_at(sample_static, synthetic_weather, 20, model_config)
+    maximal = _wind_dynamics_features(features, wind_speed_effective_ms=0.0, wind_change_3h_ms=-20.0)
+    multiplier, _ = _calm_wind_activity_multiplier(
+        maximal, model_config, population_potential=100.0,
+        temperature_activity=1.0, humidity_activity=1.0, daypart_activity=1.0,
+    )
+    cap = model_config.wind_dynamics_params.get("max_combined_multiplier", 1.7)
+    assert multiplier <= cap + 1e-6
+
+
+def test_compute_biting_activity_calm_uplift_does_not_override_strong_wind_suppression(
+    sample_static, synthetic_weather, model_config
+):
+    """item 6: genuine wind suppression on a windy hour must survive --
+    the calm-gate stays closed regardless of favourable population/comfort."""
+    features = _features_at(sample_static, synthetic_weather, 20, model_config)
+    windy = features.__class__(**{
+        **features.__dict__,
+        "wind_speed_current_ms": 12.0,
+        "wind_speed_effective_ms": 12.0,
+        "wind_change_3h_ms": 0.0,
+        "current_temperature_c": 20.0,
+        "humidity_current_pct": 70.0,
+    })
+    activity, terms = compute_biting_activity(windy, model_config, population_potential=60.0)
+    assert terms["calm_wind_uplift"] == pytest.approx(1.0, abs=0.05)
+    assert activity < 25.0
 
 
 def test_daylight_hours_longer_in_summer_than_winter():

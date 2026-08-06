@@ -16,8 +16,9 @@ export async function insertReport(db: D1Database, input: ReportInput, reporterH
   await db
     .prepare(
       `INSERT INTO mosquito_reports
-        (id, created_at, cell_id, latitude_rounded, longitude_rounded, severity, terrain, activity, repellent_used, comment, forecast_score, model_version, reporter_hash)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        (id, created_at, cell_id, latitude_rounded, longitude_rounded, severity, terrain, activity, repellent_used, comment, forecast_score, model_version, reporter_hash,
+         forecast_wind_ms, effective_wind_ms, temperature_c, humidity_pct, population_potential, biting_activity, target_timestamp)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .bind(
       id,
@@ -32,7 +33,14 @@ export async function insertReport(db: D1Database, input: ReportInput, reporterH
       input.comment ?? null,
       input.forecast_score ?? null,
       input.model_version ?? null,
-      reporterHash
+      reporterHash,
+      input.forecast_wind_ms ?? null,
+      input.effective_wind_ms ?? null,
+      input.temperature_c ?? null,
+      input.humidity_pct ?? null,
+      input.population_potential ?? null,
+      input.biting_activity ?? null,
+      input.target_timestamp ?? null
     )
     .run();
 
@@ -58,7 +66,8 @@ export async function listReports(db: D1Database, options: ListReportsOptions) {
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-  const query = `SELECT id, created_at, cell_id, latitude_rounded, longitude_rounded, severity, terrain, activity, repellent_used, comment, forecast_score, model_version
+  const query = `SELECT id, created_at, cell_id, latitude_rounded, longitude_rounded, severity, terrain, activity, repellent_used, comment, forecast_score, model_version,
+                        forecast_wind_ms, effective_wind_ms, temperature_c, humidity_pct, population_potential, biting_activity, target_timestamp
                  FROM mosquito_reports ${where}
                  ORDER BY created_at DESC
                  LIMIT ${MAX_LIST_RESULTS}`;

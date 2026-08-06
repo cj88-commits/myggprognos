@@ -9,6 +9,16 @@ export interface ReportFormProps {
   longitude: number;
   forecastScore: number;
   modelVersion: string;
+  // Forecast context (docs/wind-calm-investigation.md item 10) -- whatever
+  // the currently-displayed forecast record has available; all optional
+  // since older/offline data won't have them.
+  forecastWindMs?: number;
+  effectiveWindMs?: number;
+  temperatureC?: number;
+  humidityPct?: number;
+  populationPotential?: number;
+  bitingActivity?: number;
+  targetTimestamp?: string;
   onClose: () => void;
   onSubmitted: () => void;
 }
@@ -42,7 +52,22 @@ function roundCoordinate(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-export function ReportForm({ cellId, latitude, longitude, forecastScore, modelVersion, onClose, onSubmitted }: ReportFormProps) {
+export function ReportForm({
+  cellId,
+  latitude,
+  longitude,
+  forecastScore,
+  modelVersion,
+  forecastWindMs,
+  effectiveWindMs,
+  temperatureC,
+  humidityPct,
+  populationPotential,
+  bitingActivity,
+  targetTimestamp,
+  onClose,
+  onSubmitted,
+}: ReportFormProps) {
   const { t } = useI18n();
   const [severity, setSeverity] = useState<number | null>(null);
   const [terrain, setTerrain] = useState<string | null>(null);
@@ -76,6 +101,13 @@ export function ReportForm({ cellId, latitude, longitude, forecastScore, modelVe
       comment: comment.trim() ? comment.trim().slice(0, 280) : undefined,
       forecast_score: forecastScore,
       model_version: modelVersion,
+      forecast_wind_ms: forecastWindMs,
+      effective_wind_ms: effectiveWindMs,
+      temperature_c: temperatureC,
+      humidity_pct: humidityPct,
+      population_potential: populationPotential,
+      biting_activity: bitingActivity,
+      target_timestamp: targetTimestamp,
     });
     setSubmitting(false);
     if (result.ok) {

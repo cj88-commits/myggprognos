@@ -167,10 +167,19 @@ def write_manifest(
     series_shard_count: int = DEFAULT_SERIES_SHARD_COUNT,
     combination: dict[str, float] | None = None,
     thresholds: dict[str, list[float]] | None = None,
+    build_sha: str | None = None,
 ) -> Path:
     manifest = {
         "generated_at": generated_at,
         "model_version": model_version,
+        # Exact source commit this run's code came from (docs/wind-calm-
+        # investigation.md item 11) -- lets a future "why did the forecast
+        # change on date X" question be answered by `git show <sha>`
+        # instead of guessing from generated_at/model_version alone (the
+        # model.yaml version only changes on deliberate formula edits, not
+        # every commit). "unknown" if it couldn't be resolved (e.g. no git
+        # history available in the build environment).
+        "build_sha": build_sha or "unknown",
         "forecast_start": forecast_start,
         "forecast_end": forecast_end,
         "hourly_until": hourly_until,

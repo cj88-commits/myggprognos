@@ -82,6 +82,7 @@ POSITIVE_LABELS = {
     "daypart_activity": "Skymning/gryning med hög aktivitet",
     "terrain_exposure": "Vegetation med lite vind",
     "water_proximity": "Nära vatten",
+    "calm_wind_uplift": "Vindstilla, ofta efter tidigare blåst",
 }
 
 NEGATIVE_LABELS = {
@@ -205,7 +206,96 @@ def compute_population_potential(features: FeatureSet, config: ModelConfig) -> t
     return normalized * 100.0, contributions
 
 
-def compute_biting_activity(features: FeatureSet, config: ModelConfig) -> tuple[float, dict[str, float]]:
+def _calm_wind_activity_multiplier(
+    features: FeatureSet,
+    config: ModelConfig,
+    population_potential: float,
+    temperature_activity: float,
+    humidity_activity: float,
+    daypart_activity: float,
+) -> tuple[float, dict[str, float]]:
+    """Targeted, isolated correction for a reported false-negative pattern:
+    "mosquitoes became very numerous immediately after the wind dropped,
+    while Myggprognos still showed 'Mycket låg'" (see
+    docs/wind-calm-investigation.md for the full investigation). This
+    multiplies ON TOP OF the existing wind_suppression curve in
+    compute_biting_activity below (left completely unchanged -- genuine
+    suppression on a windy hour still applies exactly as before); it only
+    ever adds activity back, and only when effective (shelter-adjusted)
+    wind is calm AND population/temperature/humidity/daypart already
+    support activity. Every gate is a smooth sigmoid or an already-computed
+    continuous term, not a binary cliff, and the combined result is capped
+    (`max_combined_multiplier`) so a single noisy forecast-hour wind
+    reading cannot alone push risk to an extreme.
+
+    Two effects, both gated by the same "conditions are otherwise
+    favourable" terms (population/comfort/daypart), so neither one alone
+    can fire under genuinely poor conditions (cold, dry, low population):
+
+      calm_multiplier    -- activity is elevated whenever it's *currently*
+                             calm (steady calm evenings count too, not just
+                             ones that just transitioned).
+      release_multiplier -- an ADDITIONAL, separate boost specifically when
+                             wind has dropped materially in the last ~3h
+                             (the "release" pattern from the report:
+                             suppression lifting, not just "it's calm").
+    """
+    params = config.wind_dynamics_params or {}
+
+    effective_wind = features.wind_speed_effective_ms
+    if effective_wind is None:
+        effective_wind = features.wind_speed_current_ms if features.wind_speed_current_ms is not None else 2.0
+
+    calm_threshold = params.get("calm_threshold_ms", 1.8)
+    calm_steepness = params.get("calm_steepness", 1.6)
+    calm_gate = scale_sigmoid(calm_threshold - effective_wind, midpoint=0.0, steepness=calm_steepness)
+
+    population_gate = scale_sigmoid(
+        population_potential,
+        midpoint=params.get("population_gate_midpoint", 15.0),
+        steepness=params.get("population_gate_steepness", 0.25),
+    )
+
+    comfort_gate = clamp(temperature_activity * humidity_activity, 0.0, 1.0)
+    daypart_gate = clamp(daypart_activity, 0.0, 1.0)
+
+    favourable = calm_gate * population_gate * comfort_gate * daypart_gate
+
+    max_calm_uplift = max(1.0, params.get("max_calm_uplift", 1.4))
+    calm_multiplier = 1.0 + (max_calm_uplift - 1.0) * favourable
+
+    wind_change_3h = features.wind_change_3h_ms
+    release_drop_ms = params.get("release_drop_ms", 2.5)
+    if wind_change_3h is None:
+        release_gate = 0.0
+    else:
+        # wind_change_3h is negative when wind DROPPED over the last 3h;
+        # centered so a drop of exactly release_drop_ms sits at the gate's
+        # half-open point, larger drops push it further toward fully open.
+        release_gate = scale_sigmoid(-wind_change_3h - release_drop_ms, midpoint=0.0, steepness=1.0)
+
+    max_release_multiplier = max(1.0, params.get("max_release_multiplier", 1.2))
+    release_multiplier = 1.0 + (max_release_multiplier - 1.0) * release_gate * favourable
+
+    combined = calm_multiplier * release_multiplier
+    max_combined = max(1.0, params.get("max_combined_multiplier", 1.7))
+    combined = clamp(combined, 1.0, max_combined)
+
+    terms = {
+        "calm_gate": round(calm_gate, 4),
+        "population_gate": round(population_gate, 4),
+        "comfort_gate": round(comfort_gate, 4),
+        "daypart_gate": round(daypart_gate, 4),
+        "release_gate": round(release_gate, 4),
+        "calm_multiplier": round(calm_multiplier, 4),
+        "release_multiplier": round(release_multiplier, 4),
+    }
+    return combined, terms
+
+
+def compute_biting_activity(
+    features: FeatureSet, config: ModelConfig, population_potential: float = 100.0
+) -> tuple[float, dict[str, float]]:
     params = config.activity_params or {
         "optimum_temperature_c": 23, "temperature_width": 10,
         "wind_half_suppression_ms": 3.5, "wind_full_suppression_ms": 9.0,
@@ -265,6 +355,14 @@ def compute_biting_activity(features: FeatureSet, config: ModelConfig) -> tuple[
     # this plain product).
     activity = temperature_activity * humidity_activity * wind_suppression * daypart_activity * rain_suppression
     activity = clamp(activity, 0.0, 1.0)
+
+    calm_multiplier, calm_terms = _calm_wind_activity_multiplier(
+        features, config, population_potential, temperature_activity, humidity_activity, daypart_activity
+    )
+    activity = clamp(activity * calm_multiplier, 0.0, 1.0)
+    terms["calm_wind_uplift"] = round(calm_multiplier, 4)
+    for key, value in calm_terms.items():
+        terms[f"calm_{key}"] = value
 
     return activity * 100.0, terms
 
@@ -346,7 +444,7 @@ def compute_score(
     activity_multiplier = (config.activities or {}).get(activity_profile, 1.0)
 
     population_potential, population_terms = compute_population_potential(features, config)
-    biting_activity, activity_terms = compute_biting_activity(features, config)
+    biting_activity, activity_terms = compute_biting_activity(features, config, population_potential)
     exposure, exposure_terms = compute_exposure(features, config, activity_multiplier)
 
     population_fraction = clamp(population_potential / 100.0, 0.0, 1.0)

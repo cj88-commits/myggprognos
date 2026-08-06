@@ -460,6 +460,15 @@ export function LocationPanel({
           longitude={longitude}
           forecastScore={adjustedFinalRisk}
           modelVersion={manifest?.model_version ?? "unknown"}
+          forecastWindMs={activeRecord.forecast_wind_ms}
+          effectiveWindMs={activeRecord.effective_wind_ms}
+          temperatureC={activeRecord.temperature_c}
+          humidityPct={activeRecord.humidity_pct}
+          populationPotential={activeRecord.population_potential}
+          bitingActivity={activeRecord.biting_activity}
+          targetTimestamp={
+            isHourlyDay && hourLabel ? hourBucketToDate(hourLabel).toISOString() : date ? `${date}T00:00:00Z` : undefined
+          }
           onClose={() => setReportOpen(false)}
           onSubmitted={() => {
             setReportOpen(false);

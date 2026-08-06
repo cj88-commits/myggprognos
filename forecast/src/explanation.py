@@ -58,6 +58,16 @@ def _activity_candidates(score: ScoreResult) -> tuple[list[Factor], list[Factor]
             positive.append(Factor(key, POSITIVE_LABELS.get(key, key), round((value - 0.5) * 0.4, 3)))
         elif key in suppressors and value < 0.8:
             negative.append(Factor(key, NEGATIVE_LABELS.get(key, key), round((value - 1.0) * 0.4, 3)))
+
+    # calm_wind_uplift is a multiplier (>= 1.0), not a 0-1 fraction like the
+    # boosters above -- surfaced separately (docs/wind-calm-investigation.md)
+    # so a meaningful calm-evening/wind-drop correction is visible in the
+    # "why" explanation, not just in raw diagnostics.
+    calm_uplift = score.activity_terms.get("calm_wind_uplift", 1.0)
+    if calm_uplift > 1.1:
+        positive.append(
+            Factor("calm_wind_uplift", POSITIVE_LABELS["calm_wind_uplift"], round((calm_uplift - 1.0) * 0.5, 3))
+        )
     return positive, negative
 
 

@@ -68,6 +68,27 @@ describe("validateReportInput", () => {
     expect(validateReportInput({ ...validBody, forecast_score: 150 }).ok).toBe(false);
     expect(validateReportInput({ ...validBody, forecast_score: -1 }).ok).toBe(false);
   });
+
+  it("accepts a report with full wind-diagnostics forecast context", () => {
+    const result = validateReportInput({
+      ...validBody,
+      forecast_wind_ms: 4.2,
+      effective_wind_ms: 3.1,
+      temperature_c: 19.5,
+      humidity_pct: 68,
+      population_potential: 42.3,
+      biting_activity: 55.1,
+      target_timestamp: "2026-08-05T20:00:00Z",
+    });
+    expect(result.ok).toBe(true);
+    expect(result.value?.effective_wind_ms).toBe(3.1);
+    expect(result.value?.target_timestamp).toBe("2026-08-05T20:00:00Z");
+  });
+
+  it("rejects an implausible temperature or a malformed target_timestamp", () => {
+    expect(validateReportInput({ ...validBody, temperature_c: 200 }).ok).toBe(false);
+    expect(validateReportInput({ ...validBody, target_timestamp: "not-a-date" }).ok).toBe(false);
+  });
 });
 
 describe("validateBbox", () => {

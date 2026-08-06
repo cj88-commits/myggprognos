@@ -20,7 +20,7 @@ SAMPLE_DATA_DIR = DATA_DIR / "samples"
 GENERATED_DATA_DIR = DATA_DIR / "generated"
 DEFAULT_MODEL_CONFIG_PATH = FORECAST_DIR / "model.yaml"
 
-MODEL_VERSION = "0.1.0"
+MODEL_VERSION = "0.2.0"
 
 # Sweden bounding box (approximate, WGS84) used to build/filter the grid.
 SWEDEN_BBOX = {
@@ -118,6 +118,8 @@ class ModelConfig:
     population_weights: dict[str, float] = field(default_factory=dict)
     activity_params: dict[str, float] = field(default_factory=dict)
     exposure_params: dict[str, float] = field(default_factory=dict)
+    wind_shelter_params: dict[str, float] = field(default_factory=dict)
+    wind_dynamics_params: dict[str, float] = field(default_factory=dict)
     combination_params: dict[str, float] = field(default_factory=dict)
     abundance_thresholds: list[float] = field(default_factory=lambda: [28.0, 38.0, 48.0, 58.0])
     activities: dict[str, float] = field(default_factory=dict)
@@ -140,6 +142,8 @@ class ModelConfig:
             population_weights=model.get("population_weights", {}),
             activity_params=model.get("activity", {}),
             exposure_params=model.get("exposure", {}),
+            wind_shelter_params=model.get("wind_shelter", {}),
+            wind_dynamics_params=model.get("wind_dynamics", {}),
             combination_params=model.get("combination", {}),
             abundance_thresholds=raw.get("thresholds", {}).get("abundance", [28.0, 38.0, 48.0, 58.0]),
             activities=raw.get("activities", {}),
