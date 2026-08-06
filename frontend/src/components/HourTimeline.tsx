@@ -40,10 +40,17 @@ export function HourTimeline({ hourly, date, activityMultiplier, combination }: 
       activityMultiplier,
       combination
     );
-    return { hour: targetHour, category: riskCategory(risk) };
-  }).filter((p): p is { hour: number; category: ReturnType<typeof riskCategory> } => p !== null);
+    return { hour: targetHour, risk, category: riskCategory(risk) };
+  }).filter((p): p is { hour: number; risk: number; category: ReturnType<typeof riskCategory> } => p !== null);
 
   if (points.length === 0) return null;
+
+  // Label the worst hour directly on the strip (item 5) -- "instantly
+  // understand when mosquitoes are worst" without reading every dot.
+  // Skipped when every sampled hour is tied (nothing distinctly "worst").
+  const peakRisk = Math.max(...points.map((p) => p.risk));
+  const peakIsDistinct = points.some((p) => p.risk < peakRisk);
+  const peakHour = peakIsDistinct ? points.find((p) => p.risk === peakRisk)?.hour : undefined;
 
   return (
     <div>
@@ -51,6 +58,7 @@ export function HourTimeline({ hourly, date, activityMultiplier, combination }: 
       <div className="hour-timeline" role="list" aria-label={t("panel.timelineTitle")}>
         {points.map((p) => (
           <div className="hour-timeline-point" role="listitem" key={p.hour}>
+            {p.hour === peakHour && <span className="hour-timeline-peak-label">{t("panel.timelinePeak")}</span>}
             <span className="hour-timeline-dot" style={{ background: p.category.color }} aria-hidden="true" />
             <span className="hour-timeline-hour" aria-hidden="true">
               {p.hour}

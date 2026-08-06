@@ -1,17 +1,10 @@
 import { useState } from "react";
-import {
-  ACTIVITY_KEYS,
-  LAYER_KEYS,
-  PRIMARY_PRODUCT_KEYS,
-  type LayerKey,
-  type Manifest,
-  type PlaceRecord,
-} from "../types/forecast";
+import { ACTIVITY_KEYS, SIMPLE_PRODUCT_KEYS, type LayerKey, type Manifest, type PlaceRecord } from "../types/forecast";
 import { SearchBox } from "./SearchBox";
 import { useGeolocation } from "../hooks/useGeolocation";
 import { useI18n } from "../i18n";
 import type { I18nKey } from "../i18n/types";
-import { formatStockholmDateLabel, formatStockholmHourShort } from "../lib/time";
+import { formatStockholmDateLabel } from "../lib/time";
 
 function addDaysIso(dateIso: string, days: number): string {
   const d = new Date(dateIso + "T00:00:00Z");
@@ -24,39 +17,23 @@ export interface ControlBarProps {
   places: PlaceRecord[];
   date: string;
   onDateChange: (date: string) => void;
-  isHourlyDay: boolean;
-  hour: number | null;
-  onHourChange: (hour: number) => void;
-  daypart: string;
-  onDaypartChange: (daypart: string) => void;
   activity: string;
   onActivityChange: (activity: string) => void;
   layer: LayerKey;
   onLayerChange: (layer: LayerKey) => void;
   onSelectLocation: (lat: number, lon: number) => void;
-  animating: boolean;
-  onToggleAnimation: () => void;
 }
-
-const DAYPARTS = ["morning", "afternoon", "evening", "night"];
 
 export function ControlBar({
   manifest,
   places,
   date,
   onDateChange,
-  isHourlyDay,
-  hour,
-  onHourChange,
-  daypart,
-  onDaypartChange,
   activity,
   onActivityChange,
   layer,
   onLayerChange,
   onSelectLocation,
-  animating,
-  onToggleAnimation,
 }: ControlBarProps) {
   const { t, locale } = useI18n();
   const forecastStart = manifest?.forecast_start ?? new Date().toISOString().slice(0, 10);
@@ -64,41 +41,25 @@ export function ControlBar({
 
   const { locate, loading: locating, error: geoError } = useGeolocation(onSelectLocation);
 
-  // Desktop keeps every control inline (unchanged) behind "Fler
-  // installningar" for just activity/map-view, same as before. Mobile
-  // collapses everything except search behind a single settings sheet --
-  // the map itself was too cluttered with buttons to pan/zoom reliably
-  // (confirmed by the user on a real phone). Same open/close state drives
-  // both; only which controls live inline vs. inside the sheet differs by
-  // breakpoint (see .control-bar-inline / .control-bar-sheet-only in
-  // global.css).
+  // Users do not care about the model -- only search, "which product" and
+  // "which day" are always-visible controls now. Everything else
+  // (activity personalisation) lives behind this one settings icon. Same
+  // open/close state drives both the desktop dropdown and the mobile
+  // bottom sheet (see .filters-panel / .filters-toggle in global.css) --
+  // only the positioning differs by media query, not the mechanism.
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   function formatDateLabel(dateIso: string): string {
     return formatStockholmDateLabel(dateIso, locale);
   }
 
-  // Hour buckets are stored/keyed in UTC (see manifest.hourly_files), but
-  // this is the one and only place that ever turns one into a clock time
-  // shown to a user -- always Europe/Stockholm (item 4: never show UTC).
-  const stockholmHour =
-    isHourlyDay && hour !== null ? formatStockholmHourShort(`${date}T${String(hour).padStart(2, "0")}`, locale) : "";
-  // Compact summary shown on the settings toggle (desktop only -- see
-  // .filters-toggle-summary, hidden on mobile where the button is icon-only)
-  // so current activity/map-view state is visible without opening the panel.
-  const advancedSummary = `${t(`activity.${activity}` as I18nKey)} · ${t(`layer.${layer}` as I18nKey)}`;
-
-  // Locate button + product switch + day + hour/daypart: rendered once
-  // inline for desktop (idSuffix "") and once again inside the mobile
-  // settings sheet (idSuffix "-mobile") -- CSS shows exactly one copy per
-  // breakpoint (see .control-bar-inline / .control-bar-sheet-only), never
-  // both. A shared function instead of writing this twice by hand; id
-  // suffixes keep the two copies' <label htmlFor>/<select id> pairs valid
-  // (DOM ids must be unique even though only one copy is ever visible).
+  // Locate button + day picker: rendered once inline for desktop (idSuffix
+  // "") and once again inside the mobile settings sheet (idSuffix
+  // "-mobile") -- CSS shows exactly one copy per breakpoint (see
+  // .control-bar-inline / .control-bar-sheet-only), never both. Id
+  // suffixes keep the two copies' <label htmlFor>/<select id> pairs valid.
   function renderCoreControls(idSuffix: string) {
     const dateId = `date-select${idSuffix}`;
-    const hourId = `hour-select${idSuffix}`;
-    const daypartId = `daypart-select${idSuffix}`;
     return (
       <>
         <button
@@ -111,20 +72,6 @@ export function ControlBar({
           {locating ? "…" : "📍"}
         </button>
 
-        <div className="control-group product-switch" role="group" aria-label={t("controlBar.layer")}>
-          {PRIMARY_PRODUCT_KEYS.map((key) => (
-            <button
-              key={key}
-              type="button"
-              className="option-chip"
-              aria-pressed={layer === key}
-              onClick={() => onLayerChange(key)}
-            >
-              {t(`layer.${key}` as I18nKey)}
-            </button>
-          ))}
-        </div>
-
         <div className="control-group">
           <label htmlFor={dateId}>{t("controlBar.day")}</label>
           <select id={dateId} value={date} onChange={(e) => onDateChange(e.target.value)}>
@@ -135,43 +82,6 @@ export function ControlBar({
             ))}
           </select>
         </div>
-
-        {isHourlyDay ? (
-          <div className="control-group">
-            <label htmlFor={hourId}>{t("controlBar.hour")}</label>
-            <input
-              id={hourId}
-              type="range"
-              min={0}
-              max={23}
-              step={1}
-              value={hour ?? 0}
-              onChange={(e) => onHourChange(parseInt(e.target.value, 10))}
-              aria-valuetext={stockholmHour}
-            />
-            <span aria-hidden="true">{stockholmHour}</span>
-            <button
-              type="button"
-              className="icon-button"
-              aria-pressed={animating}
-              onClick={onToggleAnimation}
-              title={t("controlBar.playPause")}
-            >
-              {animating ? "⏸" : "▶"}
-            </button>
-          </div>
-        ) : (
-          <div className="control-group">
-            <label htmlFor={daypartId}>{t("controlBar.timeOfDay")}</label>
-            <select id={daypartId} value={daypart} onChange={(e) => onDaypartChange(e.target.value)}>
-              {DAYPARTS.map((part) => (
-                <option key={part} value={part}>
-                  {t(`daypart.${part}` as I18nKey)}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
       </>
     );
   }
@@ -180,6 +90,25 @@ export function ControlBar({
     <div className="control-bar">
       <div className="control-group control-group-search">
         <SearchBox places={places} onSelect={(lat, lon) => onSelectLocation(lat, lon)} />
+      </div>
+
+      {/* The only always-visible "which product" choice: Myggrisk (am I
+          likely to get bitten) vs Myggläge (how favourable is this area in
+          general). Segmented buttons, not a dropdown, so the selected mode
+          is always visually obvious -- see the "simplify around the user's
+          mental model" iteration. */}
+      <div className="control-group product-switch" role="group" aria-label={t("controlBar.layer")}>
+        {SIMPLE_PRODUCT_KEYS.map((key) => (
+          <button
+            key={key}
+            type="button"
+            className="option-chip"
+            aria-pressed={layer === key}
+            onClick={() => onLayerChange(key)}
+          >
+            {t(`layer.${key}` as I18nKey)}
+          </button>
+        ))}
       </div>
 
       {/* Desktop: identical to the pre-redesign inline layout (display:contents
@@ -199,7 +128,7 @@ export function ControlBar({
           ⚙
         </span>
         <span className="filters-toggle-label">{t("controlBar.filters")}</span>
-        <span className="filters-toggle-summary">{advancedSummary}</span>
+        <span className="filters-toggle-summary">{t(`activity.${activity}` as I18nKey)}</span>
       </button>
 
       {advancedOpen && (
@@ -230,17 +159,6 @@ export function ControlBar({
             {ACTIVITY_KEYS.map((key) => (
               <option key={key} value={key}>
                 {t(`activity.${key}` as I18nKey)}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="control-group">
-          <label htmlFor="layer-select">{t("controlBar.layer")}</label>
-          <select id="layer-select" value={layer} onChange={(e) => onLayerChange(e.target.value as LayerKey)}>
-            {LAYER_KEYS.map((key) => (
-              <option key={key} value={key}>
-                {t(`layer.${key}` as I18nKey)}
               </option>
             ))}
           </select>

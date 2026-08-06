@@ -19,7 +19,7 @@ const en: Partial<I18nDict> = {
   "controlBar.filters": "Settings",
   "controlBar.closeFilters": "Close",
 
-  "layer.daily_peak_risk": "Mosquito risk today",
+  "layer.daily_peak_risk": "Mosquito risk",
   "layer.current_risk": "Mosquito risk right now",
   "layer.population_potential": "Mosquito outlook",
   "layer.biting_activity": "Mosquito activity",
@@ -47,6 +47,7 @@ const en: Partial<I18nDict> = {
   "panel.heroHeadlineNow": "{category} risk right now",
   "panel.heroHeadline": "{category} risk",
   "panel.heroHeadlineDailyPeak": "{category} risk today",
+  "panel.heroHeadlineRisk": "{category} risk",
   "panel.abundanceHeadline.very_low": "Very low mosquito outlook",
   "panel.abundanceHeadline.low": "Low mosquito outlook",
   "panel.abundanceHeadline.moderate": "Moderate mosquito outlook",
@@ -57,7 +58,7 @@ const en: Partial<I18nDict> = {
   "panel.whyTitle": "What's affecting the risk right now?",
   "panel.whyTitleToday": "What's affecting today's risk?",
   "panel.whenChangesTitle": "When does it change?",
-  "panel.peakAroundTime": "Peak expected around {time}.",
+  "panel.peakAroundTime": "Highest risk today: around {time}.",
   "panel.dataQualityTitle": "Forecast basis",
   "panel.dataQualityExplain": "Shows how much and how good the underlying data is -- not how dangerous the risk is.",
   "panel.modelDisclaimer":
@@ -72,12 +73,21 @@ const en: Partial<I18nDict> = {
   "panel.advice.high": "Bring repellent and consider covering up.",
   "panel.advice.very_high": "Avoid wetlands and forest if possible. Use repellent.",
 
+  "panel.abundanceAdvice.very_low": "Unusually mosquito-poor area. Low risk of problems here.",
+  "panel.abundanceAdvice.low": "Moderately mosquito-friendly area.",
+  "panel.abundanceAdvice.moderate": "Mosquito-rich area. Risk can rise quickly in calm, warm weather.",
+  "panel.abundanceAdvice.high": "Very mosquito-rich area, especially near water or wetland.",
+  "panel.abundanceAdvice.very_high": "Extremely mosquito-rich area. Expect mosquitoes as soon as weather is favourable.",
+
   "panel.timelineTitle": "Through the day",
+  "panel.timelinePeak": "Peak",
   "panel.cardsTitle": "Coming days",
   "panel.cardToday": "Today",
   "panel.cardTomorrow": "Tomorrow",
   "panel.cardPeak": "Peak at {time}",
   "panel.cardPeakUnknown": "Peak unknown",
+  "panel.cardBest": "Lowest risk",
+  "panel.cardWorst": "Highest risk",
 
   "panel.howItWorksTitle": "How does the forecast work?",
   "panel.detailsTitle": "Technical details",

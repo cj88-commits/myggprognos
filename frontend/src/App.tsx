@@ -1,10 +1,10 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { ControlBar } from "./components/ControlBar";
 import { Legend } from "./components/Legend";
 import { StatusBanner } from "./components/StatusBanner";
 import { LocationPanel } from "./components/LocationPanel";
 import { BottomSheet, type SheetState } from "./components/BottomSheet";
-import { useCells, useDailyForDate, useHourlyForHour, useLocationSeries, useManifest, usePlaces } from "./hooks/useForecastData";
+import { useCells, useDailyForDate, useLocationSeries, useManifest, usePlaces } from "./hooks/useForecastData";
 import { useI18n } from "./i18n";
 import { nearestCell, nearestPlace } from "./lib/api";
 import { clearFetchCache } from "./lib/fetchJsonGz";
@@ -34,8 +34,6 @@ function addDaysIso(dateIso: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-const ANIMATION_INTERVAL_MS = 900;
-
 // The full production grid is ~18,185 cells; the bundled fallback sample is
 // 5. Anything well below full scale means the site is showing limited
 // example data, not real Sweden-wide coverage -- worth a distinct, explicit
@@ -62,7 +60,6 @@ export default function App() {
   const [daypart, setDaypart] = useState<string>(initialUrlState.daypart ?? DEFAULT_STATE.daypart!);
   const [activity, setActivity] = useState<string>(initialUrlState.activity ?? DEFAULT_STATE.activity);
   const [layer, setLayer] = useState<LayerKey>(initialUrlState.layer ?? DEFAULT_STATE.layer);
-  const [animating, setAnimating] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
   // Mobile bottom sheet (item 1) -- irrelevant on desktop, which keeps the
@@ -87,54 +84,33 @@ export default function App() {
   const hourLabel = manifest?.hourly_files[hourOffset]?.replace("hourly/", "").replace(".json.gz", "") ?? null;
 
   const { data: dailyRecords, loading: dailyLoading, error: dailyError } = useDailyForDate(date || null, refreshKey);
-  const { data: hourlyRecords, loading: hourlyLoading, error: hourlyError } = useHourlyForHour(
-    isHourlyDay ? hourLabel : null,
-    refreshKey
-  );
-
-  // Animation: advance hour-of-day while playing (hourly days only).
-  const animationTimer = useRef<number | null>(null);
-  useEffect(() => {
-    if (!animating || !isHourlyDay) return;
-    animationTimer.current = window.setInterval(() => {
-      setHourOfDay((h) => (h + 1) % 24);
-    }, ANIMATION_INTERVAL_MS);
-    return () => {
-      if (animationTimer.current) window.clearInterval(animationTimer.current);
-    };
-  }, [animating, isHourlyDay]);
 
   const activityMultiplier = manifest?.activities?.[activity] ?? 1.0;
 
-  // "Myggrisk idag" and "Myggläge" both always describe the WHOLE
-  // day/peak, never whichever hour happens to be selected -- this is the
-  // fix for the reported default behaviour (map used to default to
-  // page-load-hour, which could show a misleadingly suppressed midday
-  // score). Only "Myggrisk just nu" (and the secondary biting_activity/
-  // confidence layers) are still driven by the hour/daypart selector.
-  const usesPeakData = layer === "daily_peak_risk" || layer === "population_potential";
-
+  // Both remaining products -- Myggrisk (daily_peak_risk) and Myggläge
+  // (population_potential) -- always describe the WHOLE day/peak, never
+  // whichever hour happens to be selected (see the "simplify around the
+  // user's mental model" iteration: there is no longer an "just nu"/hour-
+  // driven product to switch to). A legacy bookmarked link carrying one of
+  // the old current_risk/biting_activity/confidence layer values falls
+  // back to the risk calculation below rather than breaking.
   const valuesByCellId = useMemo(() => {
-    const source: ScoreFields[] | null = usesPeakData ? dailyRecords : isHourlyDay ? hourlyRecords : dailyRecords;
-    if (!source) return null;
+    if (!dailyRecords) return null;
     const map: Record<string, number> = {};
-    for (const record of source) {
-      if (layer === "daily_peak_risk" || layer === "current_risk") {
-        map[record.cell_id] = finalRiskForActivity(
-          record.population_potential,
-          record.biting_activity,
-          record.base_exposure_fraction,
-          activityMultiplier,
-          manifest?.combination
-        );
-      } else if (layer === "confidence") {
-        map[record.cell_id] = record.confidence;
-      } else {
-        map[record.cell_id] = record[layer];
-      }
+    for (const record of dailyRecords) {
+      map[record.cell_id] =
+        layer === "population_potential"
+          ? record.population_potential
+          : finalRiskForActivity(
+              record.population_potential,
+              record.biting_activity,
+              record.base_exposure_fraction,
+              activityMultiplier,
+              manifest?.combination
+            );
     }
     return map;
-  }, [usesPeakData, isHourlyDay, hourlyRecords, dailyRecords, layer, activityMultiplier, manifest?.combination]);
+  }, [dailyRecords, layer, activityMultiplier, manifest?.combination]);
 
   const selectedCell = cells ? nearestCell(cells, selectedLat, selectedLon) : null;
   const { data: series, loading: seriesLoading, error: seriesError } = useLocationSeries(
@@ -146,18 +122,10 @@ export default function App() {
   const activeDailyRecord: DailyRecord | null =
     dailyRecords?.find((r) => r.cell_id === selectedCell?.cell_id) ?? null;
 
-  const activeRecord: ScoreFields | null = useMemo(() => {
-    // The daily record's own top-level fields already ARE the peak
-    // daypart's values (see pipeline.py) -- reusing it directly here means
-    // "Myggrisk idag"/"Myggläge" never depend on the hour/daypart selector.
-    if (usesPeakData) {
-      return activeDailyRecord;
-    }
-    if (isHourlyDay) {
-      return hourlyRecords?.find((r) => r.cell_id === selectedCell?.cell_id) ?? null;
-    }
-    return activeDailyRecord?.dayparts?.[daypart as keyof DailyRecord["dayparts"]] ?? null;
-  }, [usesPeakData, isHourlyDay, hourlyRecords, selectedCell, activeDailyRecord, daypart]);
+  // The daily record's own top-level fields already ARE the peak daypart's
+  // values (see pipeline.py) -- using it directly means Myggrisk/Myggläge
+  // never depend on an hour/daypart selector that no longer exists in the UI.
+  const activeRecord: ScoreFields | null = activeDailyRecord;
 
   // Keep URL query string in sync with app state (replace, not push, to
   // avoid flooding browser history on every slider tick).
@@ -244,7 +212,7 @@ export default function App() {
   const loadingBanner = manifestLoading ? t("panel.loading") : null;
   const errorBanner = manifestError
     ? t("status.loadFailed", { error: manifestError })
-    : dailyError || hourlyError || null;
+    : dailyError || null;
 
   return (
     <div className="app-shell">
@@ -284,11 +252,6 @@ export default function App() {
           places={places ?? []}
           date={date}
           onDateChange={setDate}
-          isHourlyDay={isHourlyDay}
-          hour={hourOfDay}
-          onHourChange={setHourOfDay}
-          daypart={daypart}
-          onDaypartChange={setDaypart}
           activity={activity}
           onActivityChange={setActivity}
           layer={layer}
@@ -297,8 +260,6 @@ export default function App() {
             setUserLocation({ lat, lon });
             handleSelectLocation(lat, lon, t("search.myLocation"));
           }}
-          animating={animating}
-          onToggleAnimation={() => setAnimating((a) => !a)}
         />
 
         <Legend layer={layer} abundanceThresholds={manifest?.thresholds?.abundance} />
@@ -333,8 +294,8 @@ export default function App() {
           daypart={daypart}
           date={date}
           series={series}
-          loading={dailyLoading || hourlyLoading || seriesLoading}
-          error={dailyError || hourlyError || seriesError}
+          loading={dailyLoading || seriesLoading}
+          error={dailyError || seriesError}
           onShare={handleShare}
           shareCopied={shareCopied}
         />

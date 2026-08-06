@@ -133,10 +133,21 @@ export const LAYER_KEYS: LayerKey[] = [
   "confidence",
 ];
 
-// The three primary, always-visible products (spec: "must be clear and
-// primary"); biting_activity/confidence stay available under advanced
-// settings only, via the full LAYER_KEYS list.
-export const PRIMARY_PRODUCT_KEYS: LayerKey[] = ["population_potential", "daily_peak_risk", "current_risk"];
+// Users do not care about the model -- they care whether they're likely to
+// get bitten (see the "simplify around the user's mental model" iteration).
+// Exactly two products are exposed as a primary, always-visible choice:
+// "Myggrisk" (daily_peak_risk -- "am I likely to get bitten here") and
+// "Myggläge" (population_potential -- "how favourable is this area in
+// general", for trip/campsite planning). "current_risk" (the old separate
+// "just nu" product), "biting_activity" and "confidence" are no longer
+// independently selectable in the UI at all -- LocationPanel always renders
+// the daily_peak_risk-style hero for any non-population_potential layer
+// value (including a legacy bookmarked link carrying one of the old three),
+// and biting_activity/confidence remain visible only as read-only figures
+// inside "Tekniska detaljer". LAYER_KEYS above is kept as the full backend-
+// compatible type/list; this is deliberately a separate, smaller constant
+// for what the primary switch itself offers.
+export const SIMPLE_PRODUCT_KEYS: LayerKey[] = ["daily_peak_risk", "population_potential"];
 
 export const ACTIVITY_KEYS: string[] = [
   "general",

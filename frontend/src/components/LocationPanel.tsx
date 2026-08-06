@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import type { Daypart, DailyRecord, LayerKey, Manifest, ScoreFields } from "../types/forecast";
+import type { DailyRecord, LayerKey, Manifest, ScoreFields } from "../types/forecast";
 import {
   abundanceCategory,
   dataQualityCategory,
@@ -14,7 +14,7 @@ import { getReportSummary, isReportingConfigured, type ReportSummary } from "../
 import type { LocationSeries } from "../hooks/useForecastData";
 import { useI18n } from "../i18n";
 import type { I18nKey } from "../i18n/types";
-import { currentDateIso, currentHourBucketLabel, formatStockholmDateLabel, formatStockholmHourShort, hourBucketToDate } from "../lib/time";
+import { currentDateIso, formatStockholmDateLabel, hourBucketToDate } from "../lib/time";
 import { ReportForm } from "./ReportForm";
 import { HourTimeline } from "./HourTimeline";
 import { ForecastCards } from "./ForecastCards";
@@ -28,19 +28,6 @@ const HourlyChart = lazy(() => import("./RiskCharts").then((m) => ({ default: m.
 
 function ChartSkeleton() {
   return <div className="skeleton skeleton-chart" aria-hidden="true" />;
-}
-
-// Mirrors forecast/src/config.py::DAYPARTS -- UTC hour boundaries used by
-// the pipeline to bucket hourly scores into a daypart. Kept in sync here
-// only for *display* purposes (deciding whether the currently-selected
-// hour falls inside the day's peak daypart), never to recompute a score.
-const DAYPART_ORDER: Daypart[] = ["morning", "afternoon", "evening", "night"];
-
-function hourToDaypart(utcHour: number): Daypart {
-  if (utcHour >= 6 && utcHour < 11) return "morning";
-  if (utcHour >= 11 && utcHour < 17) return "afternoon";
-  if (utcHour >= 17 && utcHour < 22) return "evening";
-  return "night";
 }
 
 export interface LocationPanelProps {
@@ -112,8 +99,6 @@ export function LocationPanel({
   activeDailyRecord,
   isHourlyDay,
   hourLabel,
-  dayIndex,
-  daypart,
   date,
   series,
   loading,
@@ -167,33 +152,16 @@ export function LocationPanel({
     manifest?.combination
   );
 
-  // The hero score/badge/color must track whichever metric the map is
-  // actually colored by (`layer`) -- previously this always showed overall
-  // risk even when the map (and its legend) had been switched to e.g.
-  // "Myggaktivitet", so toggling the layer changed the map but silently
-  // left the panel's number, badge, and explanation talking about a
-  // different metric entirely.
-  //
-  // "daily_peak_risk" and "current_risk" are both risk-like 0-100 scores
-  // (same guidance text, same category bands) that differ only in WHICH
-  // moment they summarise; "population_potential" (Myggläge) is a
-  // genuinely different claim (how favourable conditions are, independent
-  // of the current hour) and must never borrow risk-specific wording like
-  // wind/activity suppression -- see the "forecast products" iteration.
-  const isRiskProduct = layer === "daily_peak_risk" || layer === "current_risk";
+  // Exactly two products are exposed in the UI now: Myggrisk ("am I likely
+  // to get bitten") and Myggläge ("how favourable is this area in
+  // general") -- see types/forecast.ts::SIMPLE_PRODUCT_KEYS. Anything else
+  // (a legacy bookmarked link carrying the old current_risk/biting_activity/
+  // confidence layer values) falls back to the risk treatment rather than
+  // breaking, since that's the more universally-meaningful default.
   const isAbundanceLayer = layer === "population_potential";
-  const isDataQualityLayer = layer === "confidence";
-  const displayValue = isRiskProduct
-    ? adjustedFinalRisk
-    : isDataQualityLayer
-      ? activeRecord.confidence
-      : activeRecord[layer];
-  // population_potential/biting_activity are bounded 0-100 "how favourable/
-  // active is it" scores just like risk, so the same five-band scale/colors
-  // apply; data quality (backed by the raw confidence score) has its own
-  // four-band scale -- see riskModel.ts::dataQualityCategory. Never shown
-  // as a percentage: it describes how much evidence backs the number, not
-  // a probability the forecast is "correct".
+  const isRiskProduct = !isAbundanceLayer;
+
+  const displayValue = isAbundanceLayer ? activeRecord.population_potential : adjustedFinalRisk;
   const dqCategory = dataQualityCategory(activeRecord.confidence);
   const dqLabel = t(`dataQuality.${dqCategory}` as I18nKey);
   const dqIndex = DATA_QUALITY_CATEGORIES.findIndex((c) => c.key === dqCategory);
@@ -204,59 +172,21 @@ export function LocationPanel({
     ? abundanceCategory(displayValue, manifest?.thresholds?.abundance)
     : riskCategory(displayValue);
   const riskLikeLabel = t(`risk.category.${riskLikeCategory.key}` as I18nKey);
-  const categoryLabel = isDataQualityLayer ? dqLabel : riskLikeLabel;
-  const heroColor = isDataQualityLayer ? DATA_QUALITY_CATEGORIES[dqIndex]?.color ?? "var(--color-text)" : riskLikeCategory.color;
-  const layerLabel = t(`layer.${layer}` as I18nKey);
 
   const reportAdjustment = computeAdjustedRisk(adjustedFinalRisk, reportSummary);
 
-  // --- Time context: "Idag kl 14" / "Imorgon kl 09" / "Torsdag 7 aug ·
-  // Kväll" -- always Europe/Stockholm, never UTC (see lib/time.ts). ---
-  const selectedUtcHour = hourLabel ? hourBucketToDate(hourLabel).getUTCHours() : null;
-  const isNow = isHourlyDay && dayIndex === 0 && hourLabel === currentHourBucketLabel();
-  const timeContext = isHourlyDay
-    ? t(dayIndex === 0 ? "panel.timeToday" : "panel.timeTomorrow", {
-        hour: hourLabel ? formatStockholmHourShort(hourLabel, locale) : "",
-      })
-    : t("panel.timeDaypart", {
-        day: date === currentDateIso() ? t("controlBar.today") : formatStockholmDateLabel(date, locale),
-        daypart: t(`daypart.${daypart}` as I18nKey),
-      });
+  // Day-level context only -- "Idag" / "Imorgon" / "Lördag 8 aug" -- never
+  // an hour, since both remaining products always describe the whole day,
+  // not a selected moment (see App.tsx).
+  const timeContext = date === currentDateIso() ? t("controlBar.today") : formatStockholmDateLabel(date, locale);
 
-  // --- Item 3: the generated explanation always describes the day's PEAK
-  // daypart (see forecast/src/pipeline.py), not necessarily whichever
-  // hour/daypart the user has selected. Rather than silently attaching a
-  // peak-time explanation to a different score, we detect the mismatch and
-  // relabel the section honestly instead. This mismatch can only happen for
-  // "current_risk" (a specific hour) -- "daily_peak_risk" always IS the
-  // peak record by construction (see App.tsx usesPeakData), so there's
-  // nothing to mismatch.
-  const selectedDaypart: Daypart | null = isHourlyDay
-    ? selectedUtcHour !== null
-      ? hourToDaypart(selectedUtcHour)
-      : null
-    : (daypart as Daypart);
-  const peakPeriod = activeDailyRecord?.peak_period ?? null;
-  const explanationMatchesSelection =
-    layer === "daily_peak_risk" || (peakPeriod !== null && selectedDaypart === peakPeriod);
-
-  let whenChangesNote: string | null = null;
-  if (layer === "current_risk" && peakPeriod && !explanationMatchesSelection && selectedDaypart) {
-    const peakIdx = DAYPART_ORDER.indexOf(peakPeriod);
-    const selectedIdx = DAYPART_ORDER.indexOf(selectedDaypart);
-    whenChangesNote =
-      peakIdx > selectedIdx
-        ? t("panel.risingAfter", { period: t(`daypartOn.${peakPeriod}` as I18nKey) })
-        : t("panel.peakPeriod", { period: t(`daypartOn.${peakPeriod}` as I18nKey) });
-  } else if (layer === "current_risk" && peakPeriod) {
-    whenChangesNote = t("panel.peakPeriod", { period: t(`daypartOn.${peakPeriod}` as I18nKey) });
-  }
-
-  // "Myggrisk idag" hero subnote: "Topp väntas omkring kl 20." -- honestly
-  // daypart-resolution (not a precise minute), from the daily record's own
-  // daily_peak_local_time (already Stockholm-local, see pipeline.py).
+  // "Högst risk idag: kl 20" -- honestly daypart-resolution (not a precise
+  // minute), from the daily record's own daily_peak_local_time (already
+  // Stockholm-local, see pipeline.py). Risk-product only: Myggläge
+  // shouldn't imply it has an hourly peak the way a weather-driven nuisance
+  // score does.
   const peakAroundNote =
-    layer === "daily_peak_risk" && activeDailyRecord?.daily_peak_local_time
+    isRiskProduct && activeDailyRecord?.daily_peak_local_time
       ? t("panel.peakAroundTime", { time: activeDailyRecord.daily_peak_local_time.slice(0, 2) })
       : null;
 
@@ -269,48 +199,25 @@ export function LocationPanel({
         </div>
       </div>
 
-      {/* Hero: plain-language headline first, technical figures further down
-          (item 2 -- answer "what does this mean for me" before model internals). */}
+      {/* Hero: the answer to "will mosquitoes bother me?" first, in plain
+          language and large type -- the recommendation sentence is the
+          hero, not the number (see the "simplify around the user's mental
+          model" iteration). Technical figures live in "Tekniska detaljer"
+          further down, never up here. */}
       <div className="hero-block">
-        <div className="hero-headline" style={{ color: heroColor }}>
-          {layer === "current_risk"
-            ? isNow
-              ? t("panel.heroHeadlineNow", { category: riskLikeLabel })
-              : t("panel.heroHeadline", { category: riskLikeLabel })
-            : layer === "daily_peak_risk"
-              ? t("panel.heroHeadlineDailyPeak", { category: riskLikeLabel })
-              : isAbundanceLayer
-                ? t(`panel.abundanceHeadline.${riskLikeCategory.key}` as I18nKey)
-                : t("panel.metricHeadline", { metric: layerLabel, category: categoryLabel })}
+        <div className="hero-headline" style={{ color: riskLikeCategory.color }}>
+          {isAbundanceLayer
+            ? t(`panel.abundanceHeadline.${riskLikeCategory.key}` as I18nKey)
+            : t("panel.heroHeadlineRisk", { category: riskLikeLabel })}
         </div>
 
-        {isRiskProduct && (
-          <>
-            <p className="hero-guidance">{t(`panel.guidance.${riskLikeCategory.key}` as I18nKey)}</p>
-            {layer === "daily_peak_risk" && peakAroundNote && <p className="hero-subnote">{peakAroundNote}</p>}
-            {layer === "current_risk" && whenChangesNote && <p className="hero-subnote">{whenChangesNote}</p>}
-          </>
-        )}
+        <p className="hero-guidance">
+          {t(`panel.${isAbundanceLayer ? "abundanceAdvice" : "advice"}.${riskLikeCategory.key}` as I18nKey)}
+        </p>
 
+        {isRiskProduct && peakAroundNote && <p className="hero-subnote">{peakAroundNote}</p>}
         {isAbundanceLayer && <p className="hero-subnote">{t("panel.abundanceExplain")}</p>}
-
-        {!isRiskProduct && !isAbundanceLayer && (
-          <p className="hero-subnote">{t("panel.viewingLayer", { layer: layerLabel })}</p>
-        )}
       </div>
-
-      {/* "Vad bör jag göra?" -- one conservative, actionable line straight
-          after the plain-language guidance above, before any chart or
-          number. Deliberately risk-product only: Myggläge/aktivitet/
-          prognosunderlag aren't nuisance predictions, so there's no
-          "should I do X" advice to give for them (same gating as the
-          guidance text itself). */}
-      {isRiskProduct && (
-        <div>
-          <div className="section-title">{t("panel.adviceTitle")}</div>
-          <p style={{ margin: 0, fontSize: "0.95rem" }}>{t(`panel.advice.${riskLikeCategory.key}` as I18nKey)}</p>
-        </div>
-      )}
 
       {/* "When is it worst?" -- a compact dawn-to-night dot strip for the
           selected day, only meaningful while hourly data exists (today/
@@ -330,9 +237,9 @@ export function LocationPanel({
         <ForecastCards daily={series.daily} activityMultiplier={activityMultiplier} combination={manifest?.combination} />
       )}
 
-      {/* Everything below is progressive disclosure (item 3): collapsed by
-          default, for the minority of visitors who want the methodology or
-          the raw numbers rather than just the headline/advice above. */}
+      {/* Everything below is progressive disclosure: collapsed by default,
+          for the minority of visitors who want the methodology or the raw
+          numbers rather than just the headline/recommendation above. */}
 
       {/* Myggläge deliberately has NO factor list here: the generated
           explanation mixes population, activity and exposure factors
@@ -345,18 +252,7 @@ export function LocationPanel({
           <div className="disclosure-content">
             {activeDailyRecord && isRiskProduct && (
               <div>
-                <div className="section-title">
-                  {layer === "daily_peak_risk"
-                    ? t("panel.whyTitleToday")
-                    : explanationMatchesSelection
-                      ? t("panel.whyTitle")
-                      : t("panel.whyPeakTitle")}
-                </div>
-                {layer === "current_risk" && !explanationMatchesSelection && peakPeriod && (
-                  <p className="explanation-scope-note">
-                    {t("panel.explanationForPeak", { period: t(`daypartOn.${peakPeriod}` as I18nKey) })}
-                  </p>
-                )}
+                <div className="section-title">{t("panel.whyTitleToday")}</div>
                 <p style={{ margin: 0, fontSize: "0.9rem" }}>{activeDailyRecord.explanation.summary}</p>
                 <ul className="factor-list">
                   {activeDailyRecord.explanation.positive_factors.map((f) => (
@@ -399,9 +295,7 @@ export function LocationPanel({
         <div className="disclosure-content technical-section">
           <p className="model-disclaimer">{t("panel.modelDisclaimer")}</p>
 
-          {(isRiskProduct || isAbundanceLayer) && (
-            <p className="index-line">{t("panel.indexLabel", { value: formatScore(displayValue) })}</p>
-          )}
+          <p className="index-line">{t("panel.indexLabel", { value: formatScore(displayValue) })}</p>
 
           {isRiskProduct && (
             <p style={{ fontSize: "0.78rem", color: "var(--color-text-muted)" }}>

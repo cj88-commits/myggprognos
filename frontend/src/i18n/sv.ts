@@ -39,7 +39,7 @@ const sv = {
   "activity.gardening": "Trädgårdsarbete",
   "activity.outdoor_dining": "Utomhusmiddag",
 
-  "layer.daily_peak_risk": "Myggrisk idag",
+  "layer.daily_peak_risk": "Myggrisk",
   "layer.current_risk": "Myggrisk just nu",
   "layer.population_potential": "Myggläge",
   "layer.biting_activity": "Myggaktivitet",
@@ -79,6 +79,7 @@ const sv = {
   "panel.heroHeadlineNow": "{category} risk just nu",
   "panel.heroHeadline": "{category} risk",
   "panel.heroHeadlineDailyPeak": "{category} risk idag",
+  "panel.heroHeadlineRisk": "{category} risk",
   "panel.metricHeadline": "{metric}: {category}",
 
   "panel.abundanceHeadline.very_low": "Mycket låg myggförekomst",
@@ -97,7 +98,7 @@ const sv = {
 
   "panel.risingAfter": "Risken ökar {period}.",
   "panel.peakPeriod": "Högst risk väntas {period}.",
-  "panel.peakAroundTime": "Topp väntas omkring kl {time}.",
+  "panel.peakAroundTime": "Högst risk idag: omkring kl {time}.",
   "panel.whyTitleToday": "Vad påverkar risken idag?",
 
   "panel.timeToday": "Idag kl {hour}",
@@ -135,14 +136,27 @@ const sv = {
   "panel.advice.high": "Ta med myggmedel och överväg heltäckande kläder.",
   "panel.advice.very_high": "Undvik våtmarker och skog om möjligt. Använd myggmedel.",
 
+  // Myggläge has its own recommendation copy -- a different claim than
+  // risk ("how mygg-friendly is this area", not "will you get bitten
+  // right now"), so it needs its own tone (item 8 of the "simplify around
+  // the user's mental model" iteration).
+  "panel.abundanceAdvice.very_low": "Ovanligt myggfattig miljö. Låg risk för myggproblem här.",
+  "panel.abundanceAdvice.low": "Måttligt myggvänlig miljö.",
+  "panel.abundanceAdvice.moderate": "Myggrik miljö. Risken kan öka snabbt vid lugnt och varmt väder.",
+  "panel.abundanceAdvice.high": "Mycket myggrik miljö, särskilt nära vatten eller våtmark.",
+  "panel.abundanceAdvice.very_high": "Extremt myggrik miljö. Räkna med mygg så fort vädret är gynnsamt.",
+
   "panel.timelineTitle": "Läge under dagen",
   "panel.timelineAriaLabel": "Myggrisk time för timme, kl {hour}: {category}",
+  "panel.timelinePeak": "Topp",
 
   "panel.cardsTitle": "Kommande dagar",
   "panel.cardToday": "Idag",
   "panel.cardTomorrow": "Imorgon",
   "panel.cardPeak": "Topp kl {time}",
   "panel.cardPeakUnknown": "Topp okänd",
+  "panel.cardBest": "Lägst risk",
+  "panel.cardWorst": "Högst risk",
 
   "panel.howItWorksTitle": "Hur fungerar prognosen?",
   "panel.detailsTitle": "Tekniska detaljer",
