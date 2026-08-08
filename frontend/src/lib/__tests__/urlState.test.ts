@@ -3,13 +3,15 @@ import { parseUrlState, serializeUrlState } from "../urlState";
 
 describe("parseUrlState", () => {
   it("parses a fully specified query string", () => {
-    const state = parseUrlState("?lat=59.3293&lon=18.0686&date=2026-07-29&hour=5&activity=camping&layer=confidence");
+    const state = parseUrlState(
+      "?lat=59.3293&lon=18.0686&date=2026-07-29&hour=5&activity=camping&layer=population_potential"
+    );
     expect(state.lat).toBeCloseTo(59.3293);
     expect(state.lon).toBeCloseTo(18.0686);
     expect(state.date).toBe("2026-07-29");
     expect(state.hour).toBe(5);
     expect(state.activity).toBe("camping");
-    expect(state.layer).toBe("confidence");
+    expect(state.layer).toBe("population_potential");
   });
 
   it("ignores out-of-range or malformed values", () => {
@@ -29,6 +31,16 @@ describe("parseUrlState", () => {
   it("maps the legacy 'risk' layer value (pre-products) to daily_peak_risk", () => {
     const state = parseUrlState("?layer=risk");
     expect(state.layer).toBe("daily_peak_risk");
+  });
+
+  it("redirects retired layer values (confidence/biting_activity/current_risk) to daily_peak_risk", () => {
+    // Only Myggrisk/Myggläge are public views now (UX clarity pass item 2)
+    // -- a bookmark carrying one of the three retired layer values should
+    // land on the closest current equivalent, not on a state no UI control
+    // can produce.
+    expect(parseUrlState("?layer=confidence").layer).toBe("daily_peak_risk");
+    expect(parseUrlState("?layer=biting_activity").layer).toBe("daily_peak_risk");
+    expect(parseUrlState("?layer=current_risk").layer).toBe("daily_peak_risk");
   });
 });
 

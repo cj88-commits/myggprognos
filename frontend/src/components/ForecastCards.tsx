@@ -1,7 +1,7 @@
 import { useI18n } from "../i18n";
 import type { I18nKey } from "../i18n/types";
 import type { CombinationParams, DailyRecord } from "../types/forecast";
-import { finalRiskForActivity, riskCategory } from "../lib/riskModel";
+import { categoryIntensity, finalRiskForActivity, riskCategory } from "../lib/riskModel";
 import { currentDateIso, formatStockholmDateLabel } from "../lib/time";
 
 export interface ForecastCardsProps {
@@ -31,6 +31,11 @@ export function ForecastCards({ daily, activityMultiplier, combination }: Foreca
         combination
       );
       const category = riskCategory(risk);
+      // Subtle shading within the category (item 11: "41 and 59 are both
+      // moderate but shouldn't look identical") -- never changes which
+      // category a day falls in, just how saturated its badge looks within
+      // that band.
+      const intensity = categoryIntensity(risk, category);
       const label =
         relative === 0
           ? t("panel.cardToday")
@@ -40,7 +45,7 @@ export function ForecastCards({ daily, activityMultiplier, combination }: Foreca
       const peakTime = d.daily_peak_local_time
         ? t("panel.cardPeak", { time: d.daily_peak_local_time.slice(0, 2) })
         : t("panel.cardPeakUnknown");
-      return { key: d.date, label, category, peakTime, risk };
+      return { key: d.date, label, category, peakTime, risk, intensity };
     });
 
   if (cards.length === 0) return null;
@@ -70,7 +75,11 @@ export function ForecastCards({ daily, activityMultiplier, combination }: Foreca
             {i === bestIdx && <span className="forecast-card-tag forecast-card-tag--best">{t("panel.cardBest")}</span>}
             {i === worstIdx && <span className="forecast-card-tag forecast-card-tag--worst">{t("panel.cardWorst")}</span>}
             <div className="forecast-card-label">{c.label}</div>
-            <span className="forecast-card-badge" style={{ background: c.category.color }} aria-hidden="true" />
+            <span
+              className="forecast-card-badge"
+              style={{ background: c.category.color, opacity: 0.6 + 0.4 * c.intensity }}
+              aria-hidden="true"
+            />
             <div className="forecast-card-category">{t(`risk.category.${c.category.key}` as I18nKey)}</div>
             <div className="forecast-card-peak">{c.peakTime}</div>
           </div>

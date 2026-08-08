@@ -59,12 +59,36 @@ const sv = {
   "legend.populationTitle": "Myggläge (0–100)",
   "legend.activityTitle": "Myggaktivitet (0–100)",
   "legend.confidenceTitle": "Prognosunderlag",
+  // Compact, mode-agnostic button label (item 10: the legend is a
+  // collapsed-by-default popover, not a "(0-100)" scale readout) -- the
+  // expanded panel restates which product it's explaining via
+  // legend.modeRisk/legend.modeAbundance below.
+  "legend.whatColorsMean": "Vad betyder färgerna?",
+  "legend.modeRisk": "Myggrisk – bettrisk idag",
+  "legend.modeAbundance": "Myggläge – myggförekomst",
 
   "risk.category.very_low": "Mycket låg",
   "risk.category.low": "Låg",
   "risk.category.moderate": "Måttlig",
   "risk.category.high": "Hög",
   "risk.category.very_high": "Mycket hög",
+
+  // Legend swatch explanations -- practical, one-sentence meanings per
+  // category, distinct per product (item 3 + item 4: Myggrisk answers "will
+  // I get bitten", Myggläge answers "are there generally many mosquitoes
+  // here", and reusing one set of sentences for both would blur that
+  // distinction right where it matters most).
+  "legend.risk.explain.very_low": "Du märker troligen knappt av mygg.",
+  "legend.risk.explain.low": "Enstaka mygg kan förekomma.",
+  "legend.risk.explain.moderate": "Du kan bli störd eller biten.",
+  "legend.risk.explain.high": "Myggmedel kan vara bra att ha.",
+  "legend.risk.explain.very_high": "Mycket myggaktivitet väntas.",
+
+  "legend.abundance.explain.very_low": "Få mygg väntas finnas i området.",
+  "legend.abundance.explain.low": "Relativt lite mygg.",
+  "legend.abundance.explain.moderate": "En tydlig myggförekomst är sannolik.",
+  "legend.abundance.explain.high": "Mycket mygg väntas finnas i området.",
+  "legend.abundance.explain.very_high": "Mycket stor myggförekomst väntas.",
 
   "dataQuality.very_good": "Mycket bra",
   "dataQuality.good": "Bra",
@@ -76,11 +100,15 @@ const sv = {
   "panel.loadError": "Kunde inte läsa in prognosdata: {error}",
   "panel.empty": "Välj en plats på kartan, sök efter en ort, eller använd din nuvarande plats för att se myggrisken.",
 
-  "panel.heroHeadlineNow": "{category} risk just nu",
-  "panel.heroHeadline": "{category} risk",
-  "panel.heroHeadlineDailyPeak": "{category} risk idag",
-  "panel.heroHeadlineRisk": "{category} risk",
   "panel.metricHeadline": "{metric}: {category}",
+
+  // Kicker line above the bare category headline (item 1 + item 8): the
+  // very first thing on screen establishes "Myggrisk = bettrisk" before the
+  // user even reads the category word below it. Myggläge deliberately has
+  // no equivalent kicker -- "Måttlig myggförekomst" already says what it
+  // means in one phrase, so splitting it the same way would add a line
+  // without adding clarity.
+  "panel.riskKicker": "Bettrisk idag",
 
   "panel.abundanceHeadline.very_low": "Mycket låg myggförekomst",
   "panel.abundanceHeadline.low": "Låg myggförekomst",
@@ -100,6 +128,24 @@ const sv = {
   "panel.peakPeriod": "Högst risk väntas {period}.",
   "panel.peakAroundTime": "Högst risk idag: omkring kl {time}.",
   "panel.whyTitleToday": "Vad påverkar risken idag?",
+
+  // "Now vs. later today" (item 7): only shown when the category actually
+  // changes between the current hour and today's peak -- a same-category
+  // drift (e.g. 14 -> 16) is deliberately not "meaningful" enough to
+  // mention, to avoid noise (see HourTimeline/ForecastCards for the
+  // definition of "meaningful" = category change).
+  "panel.nowVsPeak": "{nowCategory} bettrisk nu – {peakCategory} väntas kl {time}.",
+
+  // Myggrisk-vs-Myggläge relationship copy (item 6) -- the two products can
+  // genuinely disagree (lots of habitat but suppressed activity, or little
+  // habitat but favourable activity conditions right now), and that
+  // disagreement is one of the most useful things the app can say. Built
+  // deterministically from the two already-computed category tiers, never
+  // from an invented mechanism.
+  "panel.relationship.abundanceHigherThanRisk":
+    "Det finns sannolikt gott om mygg i området, men förhållandena håller nere bettrisken just nu.",
+  "panel.relationship.riskHigherThanAbundance":
+    "Myggförekomsten är {abundanceCategory}, men lugnt och varmt väder gör att bettrisken är hög just nu.",
 
   "panel.timeToday": "Idag kl {hour}",
   "panel.timeTomorrow": "Imorgon kl {hour}",

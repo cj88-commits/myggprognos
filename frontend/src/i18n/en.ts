@@ -30,12 +30,27 @@ const en: Partial<I18nDict> = {
   "legend.populationTitle": "Mosquito outlook (0-100)",
   "legend.activityTitle": "Mosquito activity (0-100)",
   "legend.confidenceTitle": "Forecast basis",
+  "legend.whatColorsMean": "What do the colours mean?",
+  "legend.modeRisk": "Mosquito risk – bite risk today",
+  "legend.modeAbundance": "Mosquito outlook – how many mosquitoes",
 
   "risk.category.very_low": "Very low",
   "risk.category.low": "Low",
   "risk.category.moderate": "Moderate",
   "risk.category.high": "High",
   "risk.category.very_high": "Very high",
+
+  "legend.risk.explain.very_low": "You'll likely barely notice mosquitoes.",
+  "legend.risk.explain.low": "A few mosquitoes may be around.",
+  "legend.risk.explain.moderate": "You may be bothered or bitten.",
+  "legend.risk.explain.high": "Repellent is a good idea.",
+  "legend.risk.explain.very_high": "Heavy mosquito activity expected.",
+
+  "legend.abundance.explain.very_low": "Few mosquitoes expected in the area.",
+  "legend.abundance.explain.low": "Relatively few mosquitoes.",
+  "legend.abundance.explain.moderate": "A clear mosquito presence is likely.",
+  "legend.abundance.explain.high": "Many mosquitoes expected in the area.",
+  "legend.abundance.explain.very_high": "A very large mosquito presence expected.",
 
   "dataQuality.very_good": "Very good",
   "dataQuality.good": "Good",
@@ -44,10 +59,6 @@ const en: Partial<I18nDict> = {
 
   "panel.loading": "Loading forecast…",
   "panel.empty": "Select a location on the map, search for a place, or use your current location to see mosquito risk.",
-  "panel.heroHeadlineNow": "{category} risk right now",
-  "panel.heroHeadline": "{category} risk",
-  "panel.heroHeadlineDailyPeak": "{category} risk today",
-  "panel.heroHeadlineRisk": "{category} risk",
   "panel.abundanceHeadline.very_low": "Very low mosquito outlook",
   "panel.abundanceHeadline.low": "Low mosquito outlook",
   "panel.abundanceHeadline.moderate": "Moderate mosquito outlook",
@@ -59,6 +70,12 @@ const en: Partial<I18nDict> = {
   "panel.whyTitleToday": "What's affecting today's risk?",
   "panel.whenChangesTitle": "When does it change?",
   "panel.peakAroundTime": "Highest risk today: around {time}.",
+  "panel.riskKicker": "Bite risk today",
+  "panel.nowVsPeak": "{nowCategory} bite risk now – {peakCategory} expected around {time}.",
+  "panel.relationship.abundanceHigherThanRisk":
+    "There are likely plenty of mosquitoes in the area, but conditions are keeping bite risk down right now.",
+  "panel.relationship.riskHigherThanAbundance":
+    "The mosquito outlook here is {abundanceCategory}, but calm, warm weather is pushing bite risk up right now.",
   "panel.dataQualityTitle": "Forecast basis",
   "panel.dataQualityExplain": "Shows how much and how good the underlying data is -- not how dangerous the risk is.",
   "panel.modelDisclaimer":

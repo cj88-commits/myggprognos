@@ -22,20 +22,25 @@ export const DEFAULT_STATE: AppState = {
   layer: "daily_peak_risk",
 };
 
-const VALID_LAYERS: LayerKey[] = [
-  "daily_peak_risk",
-  "current_risk",
-  "population_potential",
-  "biting_activity",
-  "confidence",
-];
+// Exactly two products are reachable via the URL now (item 2 of the UX
+// clarity pass: only Myggrisk/Myggläge are public views -- Myggaktivitet,
+// Prognosunderlag and the old separate "just nu" product are technical-
+// details-only figures, never their own selectable layer/legend/map ramp).
+const VALID_LAYERS: LayerKey[] = ["daily_peak_risk", "population_potential"];
 
-// A bookmarked/shared URL from before this iteration may still carry the
-// old single "risk" layer key (which meant "whatever hour is selected,
-// including page-load-hour") -- treat it as the closest new equivalent
-// rather than silently ignoring the whole `layer` param.
+// A bookmarked/shared URL from before this or an earlier iteration may still
+// carry one of the now-retired layer keys ("risk" pre-dates even
+// current_risk/daily_peak_risk; current_risk/biting_activity/confidence were
+// briefly their own selectable layers) -- redirect all of them to the
+// closest current public equivalent (daily_peak_risk) rather than silently
+// dropping the whole `layer` param, which previously left biting_activity/
+// confidence reachable via URL with a mismatched map color ramp even though
+// no UI control could produce that state.
 const LEGACY_LAYER_ALIASES: Record<string, LayerKey> = {
   risk: "daily_peak_risk",
+  current_risk: "daily_peak_risk",
+  biting_activity: "daily_peak_risk",
+  confidence: "daily_peak_risk",
 };
 
 export function parseUrlState(search: string): Partial<AppState> {

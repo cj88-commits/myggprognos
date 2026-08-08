@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import type { DailyRecord, LayerKey, Manifest, ScoreFields } from "../types/forecast";
 import {
   abundanceCategory,
+  categoryRank,
   dataQualityCategory,
   DATA_QUALITY_CATEGORIES,
   exposureForActivity,
@@ -14,7 +15,7 @@ import { getReportSummary, isReportingConfigured, type ReportSummary } from "../
 import type { LocationSeries } from "../hooks/useForecastData";
 import { useI18n } from "../i18n";
 import type { I18nKey } from "../i18n/types";
-import { currentDateIso, formatStockholmDateLabel, hourBucketToDate } from "../lib/time";
+import { currentDateIso, currentHourBucketLabel, formatStockholmDateLabel, formatStockholmHourShort, hourBucketToDate } from "../lib/time";
 import { ReportForm } from "./ReportForm";
 import { HourTimeline } from "./HourTimeline";
 import { ForecastCards } from "./ForecastCards";
@@ -178,17 +179,73 @@ export function LocationPanel({
   // Day-level context only -- "Idag" / "Imorgon" / "Lördag 8 aug" -- never
   // an hour, since both remaining products always describe the whole day,
   // not a selected moment (see App.tsx).
-  const timeContext = date === currentDateIso() ? t("controlBar.today") : formatStockholmDateLabel(date, locale);
+  const isToday = date === currentDateIso();
+  const timeContext = isToday ? t("controlBar.today") : formatStockholmDateLabel(date, locale);
+
+  // "Now vs. later today" (item 7): find the hourly record matching the
+  // actual current instant (not a UI hour selector -- that no longer
+  // exists) and compare its category to today's peak category. Only
+  // "meaningful" (category change) is worth a sentence -- a same-category
+  // drift like 14 -> 16 would just be noise. Today only: "now" isn't a
+  // coherent concept for a future day.
+  const nowHourly =
+    isToday && isRiskProduct && series ? series.hourly.find((h) => h.hourLabel === currentHourBucketLabel()) : null;
+  const nowRisk = nowHourly
+    ? finalRiskForActivity(
+        nowHourly.population_potential,
+        nowHourly.biting_activity,
+        nowHourly.base_exposure_fraction,
+        activityMultiplier,
+        manifest?.combination
+      )
+    : null;
+  const nowCategory = nowRisk !== null ? riskCategory(nowRisk) : null;
+  const peakCategoryForToday = activeDailyRecord ? riskCategory(activeDailyRecord.risk) : null;
+  const peakHour = activeDailyRecord?.daily_peak_local_time
+    ? parseInt(activeDailyRecord.daily_peak_local_time.slice(0, 2), 10)
+    : null;
+  const currentHour = parseInt(formatStockholmHourShort(currentHourBucketLabel(), locale), 10);
+  const peakStillAhead = peakHour !== null && Number.isFinite(currentHour) && peakHour > currentHour;
+  const nowVsPeakNote =
+    nowCategory && peakCategoryForToday && peakHour !== null && nowCategory.key !== peakCategoryForToday.key && peakStillAhead
+      ? t("panel.nowVsPeak", {
+          nowCategory: t(`risk.category.${nowCategory.key}` as I18nKey),
+          peakCategory: t(`risk.category.${peakCategoryForToday.key}` as I18nKey).toLowerCase(),
+          time: String(peakHour),
+        })
+      : null;
 
   // "Högst risk idag: kl 20" -- honestly daypart-resolution (not a precise
   // minute), from the daily record's own daily_peak_local_time (already
   // Stockholm-local, see pipeline.py). Risk-product only: Myggläge
   // shouldn't imply it has an hourly peak the way a weather-driven nuisance
-  // score does.
+  // score does. Superseded by nowVsPeakNote above when there's an actual
+  // category change ahead today -- that sentence already carries the peak
+  // time, so showing both would repeat the same "kl X" twice.
   const peakAroundNote =
-    isRiskProduct && activeDailyRecord?.daily_peak_local_time
+    isRiskProduct && !nowVsPeakNote && activeDailyRecord?.daily_peak_local_time
       ? t("panel.peakAroundTime", { time: activeDailyRecord.daily_peak_local_time.slice(0, 2) })
       : null;
+
+  // Myggrisk-vs-Myggläge relationship (item 6): the two products can
+  // genuinely disagree (lots of habitat but suppressed activity, or little
+  // habitat but favourable activity conditions right now) -- built purely
+  // from the two already-computed category tiers, shown whenever they
+  // diverge by 2+ tiers regardless of which product is currently selected
+  // (it's inherently a statement about both).
+  const abundanceCategoryForRelationship = activeRecord ? abundanceCategory(activeRecord.population_potential, manifest?.thresholds?.abundance) : null;
+  const riskCategoryForRelationship = riskCategory(adjustedFinalRisk);
+  const relationshipNote = (() => {
+    if (!abundanceCategoryForRelationship) return null;
+    const gap = categoryRank(abundanceCategoryForRelationship.key) - categoryRank(riskCategoryForRelationship.key);
+    if (gap >= 2) return t("panel.relationship.abundanceHigherThanRisk");
+    if (gap <= -2) {
+      return t("panel.relationship.riskHigherThanAbundance", {
+        abundanceCategory: t(`risk.category.${abundanceCategoryForRelationship.key}` as I18nKey).toLowerCase(),
+      });
+    }
+    return null;
+  })();
 
   return (
     <div className="panel-content">
@@ -205,18 +262,28 @@ export function LocationPanel({
           model" iteration). Technical figures live in "Tekniska detaljer"
           further down, never up here. */}
       <div className="hero-block">
-        <div className="hero-headline" style={{ color: riskLikeCategory.color }}>
-          {isAbundanceLayer
-            ? t(`panel.abundanceHeadline.${riskLikeCategory.key}` as I18nKey)
-            : t("panel.heroHeadlineRisk", { category: riskLikeLabel })}
+        {/* Kicker first (item 1 + item 8): "Bettrisk idag" establishes what
+            the big word below actually means before the user even reads
+            it, making the Myggrisk = bettrisk equivalence explicit at the
+            very top of the screen rather than something to infer. */}
+        {isRiskProduct && <div className="hero-kicker">{t("panel.riskKicker")}</div>}
+        <div className={`hero-headline${isRiskProduct ? " hero-headline--risk" : ""}`} style={{ color: riskLikeCategory.color }}>
+          {isAbundanceLayer ? t(`panel.abundanceHeadline.${riskLikeCategory.key}` as I18nKey) : riskLikeLabel}
         </div>
 
         <p className="hero-guidance">
           {t(`panel.${isAbundanceLayer ? "abundanceAdvice" : "advice"}.${riskLikeCategory.key}` as I18nKey)}
         </p>
 
+        {isRiskProduct && nowVsPeakNote && <p className="hero-subnote">{nowVsPeakNote}</p>}
         {isRiskProduct && peakAroundNote && <p className="hero-subnote">{peakAroundNote}</p>}
         {isAbundanceLayer && <p className="hero-subnote">{t("panel.abundanceExplain")}</p>}
+
+        {/* Myggrisk vs Myggläge relationship (item 6) -- shown regardless of
+            which product is currently selected, since it's inherently a
+            statement about both at once and is one of the most useful
+            things this app can say when they genuinely disagree. */}
+        {relationshipNote && <p className="hero-relationship">{relationshipNote}</p>}
       </div>
 
       {/* "When is it worst?" -- a compact dawn-to-night dot strip for the

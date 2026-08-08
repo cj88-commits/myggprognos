@@ -479,15 +479,19 @@ a {
   }
 
   /* The legend's default bottom-left position sits directly under the
-     sheet's always-visible closed-state sliver; nudge it up to clear that,
-     then hide it outright once the sheet opens further (same reasoning as
-     the filters-panel legend-hiding rule above -- nothing useful to show
-     behind an expanded sheet). :has() targets .app-shell rather than
-     .map-area here since .bottom-sheet is a sibling of .map-area, not a
-     descendant of it. */
-  .legend {
-    bottom: calc(132px + 0.6rem);
-  }
+     sheet's always-visible closed-state sliver; nudge it up to clear that
+     (actual bottom-offset override lives further down, after the base
+     .legend rule -- same equal-specificity/source-order issue documented
+     on the filters-panel block above bit this rule in practice: living
+     here, *before* the base .legend{bottom:0.75rem} rule, it was always
+     silently overridden by it, leaving the legend visually underneath and
+     unclickable behind the closed sheet on every mobile width. Confirmed
+     live via elementFromPoint() at 320/375/430px -- see the real override
+     near .legend-row-explain instead), then hide it outright once the
+     sheet opens further (same reasoning as the filters-panel legend-hiding
+     rule above -- nothing useful to show behind an expanded sheet).
+     :has() targets .app-shell rather than .map-area here since
+     .bottom-sheet is a sibling of .map-area, not a descendant of it. */
   .app-shell:has(.bottom-sheet--half) .legend,
   .app-shell:has(.bottom-sheet--full) .legend {
     display: none;
@@ -621,16 +625,21 @@ a {
   padding: 0.3rem 0.6rem;
 }
 
+/* Compact by default -- a "Vad betyder färgerna?" button, not a "(0-100)"
+   scale readout (item 10) -- and only becomes a small popover on tap/click,
+   never covering much of the map. Kept as a native <details>/<summary> for
+   free keyboard/screen-reader support and zero custom open/close state. */
 .legend {
   position: absolute;
   bottom: 0.75rem;
   left: 0.75rem;
   z-index: 10;
-  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+  max-width: min(320px, calc(100vw - 1.5rem));
+  background: color-mix(in srgb, var(--color-surface) 96%, transparent);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   padding: 0.5rem 0.65rem;
-  font-size: 0.75rem;
+  font-size: 0.78rem;
   backdrop-filter: blur(4px);
 }
 
@@ -639,7 +648,12 @@ a {
   list-style: none;
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.4rem;
+  min-height: 28px;
+  /* Large touch target (item 10) without visually growing the collapsed
+     bar -- the padding sits inside a fixed min-height row rather than
+     inflating the whole legend box. */
+  padding: 0.3rem 0.15rem;
 }
 
 .legend summary::-webkit-details-marker {
@@ -649,6 +663,7 @@ a {
 .legend-arrow {
   width: 0;
   height: 0;
+  flex: 0 0 auto;
   border-style: solid;
   border-width: 4px 0 4px 5px;
   border-color: transparent transparent transparent var(--color-text-muted);
@@ -659,20 +674,73 @@ a {
   transform: rotate(90deg);
 }
 
+.legend-panel {
+  margin-top: 0.4rem;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.legend-mode {
+  font-weight: 700;
+  font-size: 0.8rem;
+  margin-bottom: 0.5rem;
+  color: var(--color-text);
+}
+
+/* One row per category, color + name + one-sentence practical meaning
+   (item 3 + item 4) -- a vertical stack reads far better than cramped
+   32px-wide columns once each swatch carries real sentences, and never
+   overflows horizontally on a phone (item 10). */
 .legend-scale {
   display: flex;
-  gap: 2px;
-  margin-top: 0.35rem;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
-.legend-swatch {
-  width: 32px;
-  text-align: center;
+.legend-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
 }
 
-.legend-swatch .chip {
-  height: 10px;
-  border-radius: 3px;
+.legend-row .chip {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  flex: 0 0 auto;
+  margin-top: 0.15rem;
+}
+
+.legend-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  min-width: 0;
+}
+
+.legend-row-label {
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+
+.legend-row-explain {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  line-height: 1.3;
+}
+
+/* Real closed-sheet nudge for the legend (see the comment on the
+   now-inert early copy of this rule inside the bottom-sheet mobile block
+   above) -- placed after the base .legend rule so it actually wins at
+   equal specificity. Without this, the legend's default bottom:0.75rem
+   sits directly under the bottom sheet's always-visible closed-state
+   sliver (132px, see BottomSheet.tsx CLOSED_VISIBLE_PX) and is
+   unclickable there, confirmed live via elementFromPoint() at 320/375/
+   430px viewport widths. */
+@media (max-width: 860px) {
+  .legend {
+    bottom: calc(132px + 0.6rem);
+  }
 }
 
 /* Collapsed-by-default MapLibre attribution: overrides MapLibre's own
@@ -727,10 +795,31 @@ a {
   gap: 0.35rem;
 }
 
+/* "Bettrisk idag" -- the very first thing on screen, establishing what the
+   big category word below it actually means (item 1 + item 8). */
+.hero-kicker {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
 .hero-headline {
   font-size: 1.7rem;
   font-weight: 800;
   line-height: 1.15;
+}
+
+/* Risk headline is now the bare category word ("MYCKET LÅG") under the
+   "Bettrisk idag" kicker, not a full "{category} risk" sentence -- the
+   kicker already supplies the "risk"/"bettrisk" context, so repeating it in
+   the headline would be redundant. Myggläge keeps its own full descriptive
+   phrase ("Måttlig myggförekomst") and no kicker -- that headline already
+   says what it means without needing to be split into two lines. */
+.hero-headline--risk {
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
 }
 
 /* The recommendation, not the number, is the hero (item 4 of the
@@ -748,6 +837,22 @@ a {
   margin: 0;
   font-size: 0.82rem;
   color: var(--color-text-muted);
+}
+
+/* Myggrisk-vs-Myggläge disagreement (item 6) -- visually distinct from the
+   muted subnotes above it (a small callout, not just another line of grey
+   text) since it's often the single most useful sentence on the screen:
+   "there's plenty of habitat here, but conditions are keeping risk down
+   right now" (or the reverse). */
+.hero-relationship {
+  margin: 0.2rem 0 0;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.84rem;
+  line-height: 1.35;
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-accent);
+  border-radius: 6px;
 }
 
 .technical-section {

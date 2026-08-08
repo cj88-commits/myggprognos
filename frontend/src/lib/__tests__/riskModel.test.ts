@@ -20,36 +20,40 @@ describe("clamp", () => {
 
 describe("riskCategory", () => {
   it("maps boundary scores to the documented 0-100 categories", () => {
+    // Bounds recalibrated alongside the v0.3.0 geographic-model redesign
+    // (see docs/calibration-validation-final.md "Myggrisk thresholds"):
+    // 0-3/4-7/8-13/14-21/22-100, mirroring forecast/src/config.py.
     expect(riskCategory(0).key).toBe("very_low");
-    expect(riskCategory(19).key).toBe("very_low");
-    expect(riskCategory(20).key).toBe("low");
-    expect(riskCategory(59).key).toBe("moderate");
-    expect(riskCategory(60).key).toBe("high");
-    expect(riskCategory(80).key).toBe("very_high");
+    expect(riskCategory(3).key).toBe("very_low");
+    expect(riskCategory(4).key).toBe("low");
+    expect(riskCategory(13).key).toBe("moderate");
+    expect(riskCategory(14).key).toBe("high");
+    expect(riskCategory(22).key).toBe("very_high");
     expect(riskCategory(100).key).toBe("very_high");
   });
 
   it("handles fractional scores between integer bounds", () => {
-    // Regression test: real scores are floats (e.g. 19.13), not just the
+    // Regression test: real scores are floats (e.g. 3.13), not just the
     // exact integer band edges. A prior implementation used `min <= x <=
-    // max` against adjacent integer bounds (...19 / 20...), so any
+    // max` against adjacent integer bounds (...3 / 4...), so any
     // fractional value strictly between two bands matched nothing and
     // silently fell back to the *last* (very_high) entry.
-    expect(riskCategory(19.13).key).toBe("very_low");
-    expect(riskCategory(19.99).key).toBe("very_low");
-    expect(riskCategory(39.5).key).toBe("low");
-    expect(riskCategory(59.9).key).toBe("moderate");
-    expect(riskCategory(79.99).key).toBe("high");
+    expect(riskCategory(3.13).key).toBe("very_low");
+    expect(riskCategory(3.99).key).toBe("very_low");
+    expect(riskCategory(7.5).key).toBe("low");
+    expect(riskCategory(13.9).key).toBe("moderate");
+    expect(riskCategory(21.99).key).toBe("high");
   });
 });
 
 describe("abundanceCategory", () => {
-  it("uses its own bounds, not risk's 0/20/40/60/80", () => {
-    // A score of 65 is "very_high" risk (>=80? no -- "high" under risk
-    // bounds) but under abundance's real-data-calibrated bounds (28/38/48/58)
-    // it should already read as very_high.
-    expect(riskCategory(65).key).toBe("high");
-    expect(abundanceCategory(65).key).toBe("very_high");
+  it("uses its own bounds, not risk's 0/4/8/14/22", () => {
+    // A score of 65 is already "very_high" under risk's bounds (>=22) --
+    // pick a value that lands in different bands under the two independent
+    // scales to prove abundanceCategory isn't just reusing riskCategory's
+    // bounds under the hood.
+    expect(riskCategory(35).key).toBe("very_high");
+    expect(abundanceCategory(35).key).toBe("low");
   });
 
   it("maps boundary scores to the configured edges", () => {

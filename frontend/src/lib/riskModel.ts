@@ -57,14 +57,21 @@ export function finalRiskForActivity(
 // `key` is an internal, locale-independent identifier -- components resolve
 // the *displayed* label via `t(`risk.category.${key}`)` (see i18n/sv.ts),
 // never `label` directly, which exists only as an English fallback/debug id.
+//
+// Bounds recalibrated alongside the v0.3.0 geographic-model redesign (see
+// docs/calibration-validation-final.md "Myggrisk thresholds") -- final_risk's
+// typical scale roughly halved under the new architecture, and this frontend
+// mirror had drifted from config.py's new 0/4/8/14/22 bounds until this fix
+// (the live site was briefly showing risk categories against the old
+// 0/20/40/60/80 bounds after the backend was recalibrated).
 export type RiskCategoryKey = "very_low" | "low" | "moderate" | "high" | "very_high";
 
 export const RISK_CATEGORIES: { min: number; max: number; key: RiskCategoryKey; label: string; color: string }[] = [
-  { min: 0, max: 19, key: "very_low", label: "Very low", color: "#2e8b4f" },
-  { min: 20, max: 39, key: "low", label: "Low", color: "#9ecb3c" },
-  { min: 40, max: 59, key: "moderate", label: "Moderate", color: "#f2c94c" },
-  { min: 60, max: 79, key: "high", label: "High", color: "#f2994a" },
-  { min: 80, max: 100, key: "very_high", label: "Very high", color: "#d9432e" },
+  { min: 0, max: 3, key: "very_low", label: "Very low", color: "#2e8b4f" },
+  { min: 4, max: 7, key: "low", label: "Low", color: "#9ecb3c" },
+  { min: 8, max: 13, key: "moderate", label: "Moderate", color: "#f2c94c" },
+  { min: 14, max: 21, key: "high", label: "High", color: "#f2994a" },
+  { min: 22, max: 100, key: "very_high", label: "Very high", color: "#d9432e" },
 ];
 
 export function riskCategory(score: number) {
@@ -83,13 +90,17 @@ export function riskCategory(score: number) {
 // Smooth (non-banded) 0-100 -> color interpolation used by the map and any
 // continuous-scale UI, matching the required green -> yellow-green ->
 // yellow -> orange -> red progression. Legend swatches use the discrete
-// RISK_CATEGORIES colors above; the map uses this continuous ramp.
+// RISK_CATEGORIES colors above; the map uses this continuous ramp. Stops sit
+// exactly at the RISK_CATEGORIES boundaries so two cells in the same band
+// (e.g. 9 and 13, both "moderate") still render visibly different shades
+// (MapLibre linearly interpolates between stops on the GPU) while a cell
+// right at a boundary shows the category's own defining color.
 export const RISK_COLOR_STOPS: { value: number; color: string }[] = [
   { value: 0, color: "#2e8b4f" },
-  { value: 20, color: "#9ecb3c" },
-  { value: 40, color: "#f2c94c" },
-  { value: 60, color: "#f2994a" },
-  { value: 80, color: "#d9432e" },
+  { value: 4, color: "#9ecb3c" },
+  { value: 8, color: "#f2c94c" },
+  { value: 14, color: "#f2994a" },
+  { value: 22, color: "#d9432e" },
   { value: 100, color: "#a5262c" },
 ];
 
@@ -172,4 +183,24 @@ export function dataQualityCategory(confidence: number): DataQualityCategoryKey 
 
 export function formatScore(score: number): string {
   return Math.round(score).toString();
+}
+
+// Ordinal rank of the five shared category keys, low to high -- used to
+// compare a Myggrisk category against a Myggläge category (they're on
+// different underlying 0-100 scales, so only the category *tier* is
+// comparable, never the raw scores against each other).
+const CATEGORY_ORDER: RiskCategoryKey[] = ["very_low", "low", "moderate", "high", "very_high"];
+
+export function categoryRank(key: RiskCategoryKey): number {
+  return CATEGORY_ORDER.indexOf(key);
+}
+
+// Where a score sits within its own category band, 0 (band floor) to 1
+// (band ceiling) -- lets UI badges/dots shade a touch lighter or darker
+// within a category (item 11: "41 and 59 are both moderate but shouldn't
+// look identical") without altering the category or its defining color.
+// Purely presentational: never changes which category a score belongs to.
+export function categoryIntensity(score: number, band: { min: number; max: number }): number {
+  if (band.max <= band.min) return 1;
+  return clamp((score - band.min) / (band.max - band.min), 0, 1);
 }
