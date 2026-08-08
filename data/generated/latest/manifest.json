@@ -1,7 +1,7 @@
 {
   "generated_at": "2026-08-08T14:50:08Z",
   "model_version": "0.3.0",
-  "build_sha": "10b223cdce9549d9c375b049069274eb1b308a54",
+  "build_sha": "e7b603ba3f09d472ebb885bb31da982d02bf4cfa",
   "forecast_start": "2026-08-08",
   "forecast_end": "2026-08-14",
   "hourly_until": "2026-08-10T14:00:00Z",
