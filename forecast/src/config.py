@@ -20,7 +20,7 @@ SAMPLE_DATA_DIR = DATA_DIR / "samples"
 GENERATED_DATA_DIR = DATA_DIR / "generated"
 DEFAULT_MODEL_CONFIG_PATH = FORECAST_DIR / "model.yaml"
 
-MODEL_VERSION = "0.2.0"
+MODEL_VERSION = "0.3.0"
 
 # Sweden bounding box (approximate, WGS84) used to build/filter the grid.
 SWEDEN_BBOX = {
@@ -86,12 +86,26 @@ SMHI_BACKOFF_BASE_S = float(os.environ.get("SMHI_BACKOFF_BASE_S", "1.0"))
 # Risk is a 0-100 score (see forecast/src/model.py). Labels are emitted as
 # Swedish content data directly from the pipeline (not frontend UI chrome),
 # so no frontend i18n lookup is needed to display them.
+#
+# Recalibrated for the geographic-model redesign's calibration/validation
+# sprint (see docs/calibration-validation-final.md "Myggrisk thresholds").
+# final_risk is downstream of population_potential, whose typical scale
+# roughly halved under the new architecture (see docs/geographic-model-
+# final-report.md) -- the OLD 0/20/40/60/80 bands were checked against real
+# multi-regime historical data (18 reference locations x a full real 2025
+# growing season, snowmelt through late-season, PLUS a real full-Sweden
+# dry-week snapshot) and found to put 97-99% of ALL cells in "very_low" in
+# BOTH regimes, including the wettest tested week -- not usable. These new
+# bounds were chosen the same way the abundance thresholds were: tested
+# against the combined dataset, picked for a sensible spread across bands
+# (no single band capturing >50% under typical conditions, very_high
+# staying genuinely rare but reachable) rather than literal percentiles.
 RISK_CATEGORIES = [
-    (0, 19, "very_low", "Mycket låg"),
-    (20, 39, "low", "Låg"),
-    (40, 59, "moderate", "Måttlig"),
-    (60, 79, "high", "Hög"),
-    (80, 100, "very_high", "Mycket hög"),
+    (0, 3, "very_low", "Mycket låg"),
+    (4, 7, "low", "Låg"),
+    (8, 13, "moderate", "Måttlig"),
+    (14, 21, "high", "Hög"),
+    (22, 100, "very_high", "Mycket hög"),
 ]
 
 CONFIDENCE_LABELS = [
@@ -121,7 +135,8 @@ class ModelConfig:
     wind_shelter_params: dict[str, float] = field(default_factory=dict)
     wind_dynamics_params: dict[str, float] = field(default_factory=dict)
     combination_params: dict[str, float] = field(default_factory=dict)
-    abundance_thresholds: list[float] = field(default_factory=lambda: [28.0, 38.0, 48.0, 58.0])
+    mosquito_pressure_params: dict[str, float] = field(default_factory=dict)
+    abundance_thresholds: list[float] = field(default_factory=lambda: [5.0, 12.0, 20.0, 30.0])
     activities: dict[str, float] = field(default_factory=dict)
     confidence_weights: dict[str, float] = field(default_factory=dict)
     report_adjustment: dict[str, Any] = field(default_factory=dict)
@@ -145,7 +160,8 @@ class ModelConfig:
             wind_shelter_params=model.get("wind_shelter", {}),
             wind_dynamics_params=model.get("wind_dynamics", {}),
             combination_params=model.get("combination", {}),
-            abundance_thresholds=raw.get("thresholds", {}).get("abundance", [28.0, 38.0, 48.0, 58.0]),
+            mosquito_pressure_params=model.get("mosquito_pressure", {}),
+            abundance_thresholds=raw.get("thresholds", {}).get("abundance", [5.0, 12.0, 20.0, 30.0]),
             activities=raw.get("activities", {}),
             confidence_weights=raw.get("confidence", {}),
             report_adjustment=raw.get("report_adjustment", {}),

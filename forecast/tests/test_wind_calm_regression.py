@@ -167,10 +167,15 @@ def test_scenario7_zero_population_remains_low_regardless_of_calm_wind(sample_st
         # ones) so this is genuinely "near-zero population", not just
         # "some terms lowered" -- forest/season/moisture are real habitat
         # signals independent of the wind-drop correction under test here.
+        # habitat_capacity/mosquito_pressure (geographic-model redesign)
+        # are now the primary population_potential drivers -- see
+        # model.py::compute_population_potential -- so they must be zeroed
+        # here too, not just the legacy per-weather-term fields.
         mean_temperature_14d_c=2.0, precipitation_14d_mm=0.0, emergence_potential=0.0,
         wetland_fraction=0.0, standing_water_persistence=0.0,
         forest_fraction=0.0, seasonal_suitability=0.0,
         soil_moisture_7d_mean=0.0, soil_moisture_current=0.0,
+        habitat_capacity=0.0, mosquito_pressure=0.0,
         current_temperature_c=20.0, humidity_current_pct=75.0,
         wind_speed_current_ms=1.0, wind_speed_effective_ms=1.0,
         wind_speed_3h_ago_ms=1.0, wind_change_3h_ms=0.0, wind_min_3h_ms=1.0, calm_hours_streak=6,

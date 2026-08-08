@@ -84,6 +84,16 @@ def write_cells_file(cells: list[GridCell], static_map: dict[str, StaticFeatures
                     "distance_to_water_km": static.distance_to_water_km,
                     "elevation_m": static.elevation_m,
                     "coastal_exposure": static.coastal_exposure,
+                    # Geographic-model redesign (Phase 3/4/14): published so
+                    # a future frontend can explain WHY a location's
+                    # baseline differs geographically, independent of
+                    # current weather -- see static_features.py.
+                    "habitat_capacity": static.habitat_capacity,
+                    "wetland_fraction_5km": static.wetland_fraction_5km,
+                    "water_fraction_5km": static.water_fraction_5km,
+                    "small_water_density": static.small_water_density,
+                    "floodplain_potential": static.floodplain_potential,
+                    "major_lake_interior": static.major_lake_interior,
                 }
             )
         records.append(record)

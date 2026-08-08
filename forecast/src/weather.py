@@ -11,9 +11,10 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import time
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable, Protocol
 
@@ -42,6 +43,15 @@ HOURLY_VARIABLES = [
     "wind_gusts_10m",
     "cloud_cover",
     "soil_moisture_0_to_1cm",
+    # Snowmelt ecology (geographic-model redesign, Phase 7): real
+    # accumulated snow depth (meters), so far-north/high-latitude snowmelt-
+    # driven emergence can be derived from actual per-cell snow history
+    # instead of a calendar-only, geographically-uniform curve -- see
+    # docs/geographic-model-audit-before.md #4.6. Open-Meteo's forecast API
+    # supports this hourly variable; SMHI's does not (see smhi_weather.py --
+    # snow_depth is left as None there, same documented-fallback pattern
+    # already used for soil_moisture).
+    "snow_depth",
 ]
 
 
@@ -65,6 +75,11 @@ class HourlyWeather:
     cloud_cover: list[float | None]
     soil_moisture: list[float | None]
     used_fallback: bool = False
+    # Snow depth in meters, or None throughout for providers that don't
+    # supply it at all (SMHI, synthetic) -- distinct from per-hour None
+    # entries within an otherwise-present series (a provider that supports
+    # snow_depth but is missing it for one specific hour).
+    snow_depth_m: list[float | None] = field(default_factory=list)
 
 
 class WeatherProvider(Protocol):
@@ -246,6 +261,7 @@ class OpenMeteoProvider:
                 cloud_cover=series("cloud_cover", 0, 100),
                 soil_moisture=series("soil_moisture_0_to_1cm", 0, 1),
                 used_fallback=used_fallback,
+                snow_depth_m=series("snow_depth", 0, 20),
             )
         return results
 
@@ -288,6 +304,19 @@ class OpenMeteoProvider:
                     "past_days": past_days,
                     "forecast_days": forecast_days,
                     "timezone": "UTC",
+                    # Open-Meteo's default wind unit is km/h, not m/s -- every
+                    # wind threshold in this codebase (model.yaml
+                    # wind_half_suppression_ms, calm_threshold_ms, etc.) is
+                    # named and calibrated in m/s. Found while building the
+                    # historical-validation harness (2026-calibration sprint):
+                    # this parameter was missing here, meaning any live run
+                    # actually falling back to Open-Meteo (SMHI is the default
+                    # production provider and unaffected -- it returns m/s
+                    # natively) would silently read wind speeds ~3.6x too
+                    # high, over-suppressing biting activity. Fixed here
+                    # rather than left latent for whenever the fallback is
+                    # next used.
+                    "wind_speed_unit": "ms",
                 }
                 try:
                     payload = self._request_with_retry(client, self.base_url, params)
@@ -303,6 +332,87 @@ class OpenMeteoProvider:
                     )
                     continue
                 results.update(self._parse_batch(batch, payload_list))
+        finally:
+            if owns_client:
+                client.close()
+
+        return results
+
+
+# Open-Meteo's Historical Weather API (ERA5-Land-based reanalysis, free,
+# keyless, no paid tier -- https://open-meteo.com/en/docs/historical-weather-api)
+# -- distinct from the forecast endpoint's `past_days` (bounded relative to
+# "now", not usable for an arbitrary date in 2024) and from SMHI's MESAN
+# analysis (only exposes a rolling ~24h window, see smhi_weather.py module
+# docstring). Built for the calibration/validation sprint (see
+# docs/calibration-validation-final.md and scripts/historical_model_validation.py)
+# -- neither production provider can answer "what did the model say for a
+# specific week in June 2024", and validating category thresholds against
+# only the current week's weather (as the geographic-model redesign
+# originally did) was exactly the gap this harness exists to close.
+ARCHIVE_BASE_URL = os.environ.get("OPEN_METEO_ARCHIVE_BASE_URL", "https://archive-api.open-meteo.com/v1/archive")
+
+
+class OpenMeteoArchiveProvider(OpenMeteoProvider):
+    """Historical-date variant of OpenMeteoProvider -- reuses its retry/
+    batching/parsing machinery unchanged (`_request_with_retry`,
+    `_parse_batch`, `_batched`), only replacing the endpoint and the
+    request's time-range parameters (`start_date`/`end_date` instead of
+    `past_days`/`forecast_days`). Returns the identical `HourlyWeather`
+    shape, so it's a drop-in `WeatherProvider` for `run_pipeline`/
+    `compute_features` -- the calibration sprint runs the SAME model code
+    used in production, not a separate simplified calibration model."""
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("base_url", ARCHIVE_BASE_URL)
+        super().__init__(*args, **kwargs)
+
+    def fetch_combined(self, points: Iterable[GridCell], past_days: int, forecast_days: int) -> dict[str, HourlyWeather]:
+        raise NotImplementedError(
+            "OpenMeteoArchiveProvider uses fetch_range(points, start_date, end_date) -- "
+            "past_days/forecast_days are relative to 'now', meaningless for a fixed historical date."
+        )
+
+    def fetch_range(
+        self, points: Iterable[GridCell], start_date: date, end_date: date
+    ) -> dict[str, HourlyWeather]:
+        """Same batching/retry/parsing behavior as
+        OpenMeteoProvider.fetch_combined, but for an explicit
+        [start_date, end_date] calendar-date window (inclusive) instead of
+        a past_days/forecast_days window relative to now."""
+        points = list(points)
+        results: dict[str, HourlyWeather] = {}
+        total_batches = (len(points) + self.batch_size - 1) // self.batch_size
+
+        owns_client = self._client is None
+        client = self._client or httpx.Client(timeout=self.timeout_s)
+        try:
+            for batch_num, batch in enumerate(self._batched(points), start=1):
+                if batch_num == 1 or batch_num % 10 == 0 or batch_num == total_batches:
+                    logger.info("Historical weather fetch progress: batch %d/%d", batch_num, total_batches)
+                params = {
+                    "latitude": ",".join(str(p.latitude) for p in batch),
+                    "longitude": ",".join(str(p.longitude) for p in batch),
+                    "hourly": ",".join(HOURLY_VARIABLES),
+                    "start_date": start_date.isoformat(),
+                    "end_date": end_date.isoformat(),
+                    "timezone": "UTC",
+                    "wind_speed_unit": "ms",
+                }
+                try:
+                    payload = self._request_with_retry(client, self.base_url, params)
+                except WeatherValidationError:
+                    logger.error("Historical weather fetch failed for batch of %d points; skipping batch", len(batch))
+                    continue
+                payload_list = payload if isinstance(payload, list) else [payload]
+                if len(payload_list) != len(batch):
+                    logger.error(
+                        "Open-Meteo archive returned %d results for %d requested points; skipping mismatched batch",
+                        len(payload_list),
+                        len(batch),
+                    )
+                    continue
+                results.update(self._parse_batch(batch, payload_list, used_fallback=True))
         finally:
             if owns_client:
                 client.close()
@@ -334,11 +444,27 @@ class SyntheticWeatherProvider:
         gusts: list[float | None] = []
         cloud: list[float | None] = []
         soil: list[float | None] = []
+        snow: list[float | None] = []
 
         day_of_year = start.timetuple().tm_yday
         seasonal_mean = 12 + 10 * _math.sin(2 * _math.pi * (day_of_year - 80) / 365)
 
         seed = int(hashlib.sha256(cell.cell_id.encode()).hexdigest()[:6], 16)
+
+        # Synthetic snow depth (Phase 7 sample-mode support): NOT a real
+        # snow model -- a simple, deterministic, latitude-aware proxy so
+        # sample-mode/CI runs exercise the snowmelt-emergence code path with
+        # plausible non-degenerate values. Real production data comes from
+        # Open-Meteo's actual snow_depth parameter (see OpenMeteoProvider);
+        # regression tests that need precise snow timing construct
+        # HourlyWeather fixtures directly rather than relying on this.
+        # Melt date shifts later (and peak depth increases) with latitude, a
+        # documented, physically-motivated proxy (see docs/mosquito-ecology-
+        # evidence.md), not a hidden "Norrland bonus" -- it only shifts
+        # WHEN snow is present, actual emergence still requires real
+        # accumulated warmth + habitat afterward.
+        melt_day = 55 + max(0.0, cell.latitude - 55.0) * 3.0
+        winter_peak_depth_m = 0.05 + max(0.0, cell.latitude - 55.0) * 0.02
 
         for h in range(hours):
             t = start + timedelta(hours=h)
@@ -353,6 +479,15 @@ class SyntheticWeatherProvider:
             gusts.append(round(max(0.0, 5 + 3 * _math.sin((seed + h) * 0.11)), 1))
             cloud.append(round(max(0.0, min(100.0, 50 + 30 * _math.sin((seed + h) * 0.17))), 1))
             soil.append(round(max(0.0, min(1.0, 0.25 + 0.1 * _math.sin((seed + h) * 0.05))), 3))
+            day_frac = t.timetuple().tm_yday
+            days_before_melt = melt_day - day_frac
+            if days_before_melt > 30:
+                depth = winter_peak_depth_m
+            elif days_before_melt > 0:
+                depth = winter_peak_depth_m * (days_before_melt / 30.0)
+            else:
+                depth = 0.0
+            snow.append(round(max(0.0, depth), 3))
 
         return HourlyWeather(
             cell_id=cell.cell_id,
@@ -367,6 +502,7 @@ class SyntheticWeatherProvider:
             cloud_cover=cloud,
             soil_moisture=soil,
             used_fallback=True,
+            snow_depth_m=snow,
         )
 
     def fetch_combined(

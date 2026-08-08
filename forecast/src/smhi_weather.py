@@ -335,5 +335,12 @@ class SMHIProvider:
                 cloud_cover=hourly_values["cloud_cover"],
                 soil_moisture=[None] * len(hourly_times),
                 used_fallback=False,
+                # No snow-depth parameter on either SMHI product (same
+                # documented gap as soil_moisture -- see README "Weather
+                # data source" section and docs/geographic-model-audit-
+                # before.md Phase 7). feature_engineering.py's snowmelt
+                # logic falls back to a latitude/temperature-timing proxy
+                # when this is all-None.
+                snow_depth_m=[None] * len(hourly_times),
             )
         return results

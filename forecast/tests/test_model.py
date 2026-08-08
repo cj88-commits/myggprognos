@@ -45,27 +45,30 @@ def test_bell_curve_peaks_at_optimum():
 
 
 def test_risk_category_boundaries():
+    # Bounds recalibrated for the geographic-model calibration/validation
+    # sprint -- see config.py::RISK_CATEGORIES and
+    # docs/calibration-validation-final.md "Myggrisk thresholds".
     assert risk_category(0.0)[0] == "very_low"
-    assert risk_category(19.0)[0] == "very_low"
-    assert risk_category(20.0)[0] == "low"
-    assert risk_category(59.0)[0] == "moderate"
-    assert risk_category(60.0)[0] == "high"
-    assert risk_category(80.0)[0] == "very_high"
+    assert risk_category(3.0)[0] == "very_low"
+    assert risk_category(4.0)[0] == "low"
+    assert risk_category(13.0)[0] == "moderate"
+    assert risk_category(14.0)[0] == "high"
+    assert risk_category(22.0)[0] == "very_high"
     assert risk_category(100.0)[0] == "very_high"
 
 
 def test_risk_category_handles_fractional_scores_between_integer_bounds():
-    # Regression test: real scores are floats (e.g. 19.13), not just the
+    # Regression test: real scores are floats (e.g. 3.13), not just the
     # exact integer band edges. A prior implementation required
-    # `lo <= score <= hi` against adjacent integer bounds (...19 / 20...),
-    # so any fractional value strictly between two bands (e.g. 19.13,
-    # 39.5, 59.9, 79.99) matched nothing and silently fell back to the
-    # *last* band (very_high) regardless of the actual score.
-    assert risk_category(19.13)[0] == "very_low"
-    assert risk_category(19.99)[0] == "very_low"
-    assert risk_category(39.5)[0] == "low"
-    assert risk_category(59.9)[0] == "moderate"
-    assert risk_category(79.99)[0] == "high"
+    # `lo <= score <= hi` against adjacent integer bounds, so any
+    # fractional value strictly between two bands matched nothing and
+    # silently fell back to the *last* band (very_high) regardless of the
+    # actual score.
+    assert risk_category(3.13)[0] == "very_low"
+    assert risk_category(3.99)[0] == "very_low"
+    assert risk_category(7.5)[0] == "low"
+    assert risk_category(13.9)[0] == "moderate"
+    assert risk_category(21.99)[0] == "high"
 
 
 def _features_at(sample_static, synthetic_weather, hour: int, model_config):
@@ -77,9 +80,7 @@ def test_population_potential_between_0_and_100(sample_static, synthetic_weather
     features = _features_at(sample_static, synthetic_weather, 14, model_config)
     value, terms = compute_population_potential(features, model_config)
     assert 0.0 <= value <= 100.0
-    assert set(terms) == {
-        "temperature", "rainfall", "moisture", "wetland", "forest", "season", "snowmelt", "standing_water",
-    }
+    assert set(terms) == {"pressure", "habitat_capacity", "temperature", "season"}
 
 
 def test_biting_activity_between_0_and_100(sample_static, synthetic_weather, model_config):

@@ -69,14 +69,10 @@ class ScoreResult:
 
 
 POSITIVE_LABELS = {
-    "temperature": "Varma senaste dagarna",
-    "rainfall": "Mycket nederbörd senaste veckorna",
-    "moisture": "Fuktig/vattensjuk mark",
-    "standing_water": "Ihållande stående vatten",
-    "wetland": "Närliggande våtmarker och stående vatten",
-    "forest": "Skogsmark som ger skydd",
-    "season": "Högsäsong för mygg",
-    "snowmelt": "Vårflod / snösmältning",
+    # Population/Myggläge labels (pressure/habitat_capacity/temperature/
+    # season) live in explanation.py::POPULATION_LABELS, the dict actually
+    # consulted for population_terms -- these are for activity/exposure
+    # terms only (see explanation.py::_activity_candidates/_exposure_candidates).
     "temp_activity": "Temperatur som gynnar myggaktivitet",
     "humidity_activity": "Hög luftfuktighet som gynnar aktivitet",
     "daypart_activity": "Skymning/gryning med hög aktivitet",
@@ -151,10 +147,30 @@ def _daypart_activity_curve(
 
 
 def compute_population_potential(features: FeatureSet, config: ModelConfig) -> tuple[float, dict[str, float]]:
+    """Myggläge -- "how many mosquitoes are probably around" -- now driven
+    primarily by `mosquito_pressure` (feature_engineering.py, Phase 6: a
+    persistent, decay-weighted accumulation of habitat-gated emergence) and
+    `habitat_capacity` (static_features.py, Phase 3), with `temperature`/
+    `season` kept as modest, broad suitability modifiers.
+
+    This REPLACES the previous weighted sum of eight separate terms
+    (temperature/rainfall/moisture/wetland/forest/season/snowmelt/
+    standing_water). Every one of those old terms either (a) is now folded
+    into habitat_capacity's own static geography (wetland/forest/water
+    multi-scale + edges + floodplain, computed ONCE per cell, not
+    re-weighted separately here -- see docs/geographic-model-audit-
+    before.md §4.4 on the old formula's wetland/forest double-counting), or
+    (b) is now folded into mosquito_pressure's own day-by-day rain/degree-
+    day/snowmelt convolution (rainfall, standing_water, snowmelt -- see
+    feature_engineering.py's "Persistent mosquito pressure" section), which
+    generalizes what those old terms approximated far more coarsely and,
+    crucially, adds the adult-survival DECAY the old formula never had at
+    all (see docs/geographic-model-audit-before.md finding #9). `moisture`
+    (soil moisture) is the one old input NOT carried forward into this
+    formula -- see docs/mosquito-ecology-evidence.md's stated limitations.
+    """
     weights = config.population_weights or {
-        "temperature": 0.22, "rainfall": 0.22, "moisture": 0.14,
-        "wetland": 0.13, "forest": 0.07, "season": 0.07, "snowmelt": 0.05,
-        "standing_water": 0.10,
+        "pressure": 0.55, "habitat_capacity": 0.30, "temperature": 0.08, "season": 0.07,
     }
 
     temp_input = features.mean_temperature_14d_c if features.mean_temperature_14d_c is not None else features.current_temperature_c or 10.0
@@ -162,40 +178,15 @@ def compute_population_potential(features: FeatureSet, config: ModelConfig) -> t
     if features.freezing_recently:
         temperature_term *= 0.5
 
-    # Rainfall-to-population emergence lag (see feature_engineering.py::
-    # _emergence_potential and docs/model-audit-after.md "Rainfall lag"):
-    # this used to be a bell curve directly on precipitation_14d_mm, which
-    # read heavy rain from *yesterday* as immediately boosting the adult
-    # population signal just as much as rain from two weeks ago that's had
-    # time to actually develop into adults. emergence_potential is already
-    # 0-1 and already accounts for accumulated warmth since each rain
-    # event, so it's used directly rather than re-shaped through another
-    # bell curve.
-    rainfall_term = features.emergence_potential
-    if features.days_since_meaningful_rain >= 18:
-        rainfall_term *= 0.4
-
-    moisture_input = features.soil_moisture_7d_mean if features.soil_moisture_7d_mean is not None else 0.2
-    moisture_term = scale_sigmoid(moisture_input, midpoint=0.28, steepness=8.0)
-
-    wetland_term = clamp(features.wetland_fraction * 1.8, 0.0, 1.0)
-    forest_term = clamp(features.forest_fraction * 1.3, 0.0, 1.0)
     season_term = clamp(features.seasonal_suitability, 0.0, 1.0)
-
-    spring_window = bell_curve(features.day_of_year, optimum=135, width=40)
-    snowmelt_term = spring_window * (0.35 if features.freezing_recently else 1.0)
-
-    standing_water_term = clamp(features.standing_water_persistence, 0.0, 1.0)
+    habitat_term = clamp(features.habitat_capacity / 100.0, 0.0, 1.0)
+    pressure_term = clamp(features.mosquito_pressure / 100.0, 0.0, 1.0)
 
     terms = {
+        "pressure": pressure_term,
+        "habitat_capacity": habitat_term,
         "temperature": temperature_term,
-        "rainfall": rainfall_term,
-        "moisture": moisture_term,
-        "wetland": wetland_term,
-        "forest": forest_term,
         "season": season_term,
-        "snowmelt": snowmelt_term,
-        "standing_water": standing_water_term,
     }
 
     weighted_sum = sum(terms[k] * weights.get(k, 0.0) for k in terms)
@@ -488,6 +479,31 @@ def risk_category(score: float) -> tuple[str, str]:
     # regardless of the actual score.
     key, label = RISK_CATEGORIES[0][2], RISK_CATEGORIES[0][3]
     for lo, _hi, band_key, band_label in RISK_CATEGORIES:
+        if score >= lo:
+            key, label = band_key, band_label
+    return key, label
+
+
+ABUNDANCE_CATEGORY_LABELS = [
+    ("very_low", "Mycket lågt"),
+    ("low", "Lågt"),
+    ("moderate", "Måttligt"),
+    ("high", "Högt"),
+    ("very_high", "Mycket högt"),
+]
+
+
+def abundance_category(score: float, thresholds: list[float] | None = None) -> tuple[str, str]:
+    """Myggläge's category, mirroring risk_category's "highest-lo-band-
+    cleared" logic but parameterized by `thresholds` (config.py
+    ModelConfig.abundance_thresholds / model.yaml thresholds.abundance --
+    see docs/calibration-validation-final.md "Myggläge thresholds") since
+    abundance bounds are config-driven, not a fixed module constant like
+    RISK_CATEGORIES."""
+    bounds = thresholds if thresholds is not None else [5.0, 12.0, 20.0, 30.0]
+    key, label = ABUNDANCE_CATEGORY_LABELS[0]
+    los = [0.0] + list(bounds)
+    for lo, (band_key, band_label) in zip(los, ABUNDANCE_CATEGORY_LABELS):
         if score >= lo:
             key, label = band_key, band_label
     return key, label

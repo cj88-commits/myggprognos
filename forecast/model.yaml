@@ -6,25 +6,79 @@
 # behaviour can be reviewed and adjusted without touching code.
 
 model:
-  version: "0.2.0"
+  # 0.3.0: geographic model redesign -- explicit habitat_capacity,
+  # persistent mosquito_pressure, weather/snowmelt-driven emergence,
+  # abundance/activity separation, and the calibration/validation sprint's
+  # recalibrated Myggläge/Myggrisk thresholds. See docs/geographic-model-
+  # final-report.md and docs/calibration-validation-final.md.
+  version: "0.3.0"
 
   # Base temperature (Celsius) above which mosquito development accumulates.
   development_base_temperature_c: 10
 
-  # Weights for the "population potential" component. Should sum to ~1.0;
-  # they are applied to bell/sigmoid-transformed sub-scores (0-1 each).
+  # Weights for the "population potential" (Myggläge) component. Should sum
+  # to ~1.0; applied to bell/sigmoid-transformed sub-scores (0-1 each).
+  #
+  # Geographic-model redesign (see docs/geographic-model-audit-before.md and
+  # docs/geographic-benchmark-after.md): replaces the old eight-term
+  # breakdown (temperature/rainfall/moisture/wetland/forest/season/
+  # snowmelt/standing_water). `pressure` (mosquito_pressure, see
+  # feature_engineering.py "Persistent mosquito pressure") and
+  # `habitat_capacity` (static_features.py::compute_habitat_capacity) now
+  # carry most of the weight -- both already fold in geography and
+  # weather-history internally, so they aren't re-weighted a second time
+  # here the way wetland/forest/standing_water previously were spread
+  # across multiple separate terms.
   population_weights:
-    temperature: 0.22
-    rainfall: 0.22
-    moisture: 0.14
-    wetland: 0.13
-    forest: 0.07
+    pressure: 0.55
+    habitat_capacity: 0.30
+    temperature: 0.08
     season: 0.07
-    snowmelt: 0.05
-    # Decay-weighted recent rainfall x wetland/lake density x terrain
-    # drainage -- how long rain-fed pools likely persist (see
-    # feature_engineering.py::_standing_water_persistence).
-    standing_water: 0.10
+    # Weights checked against real live weather for the 55-location
+    # benchmark (docs/geographic-benchmark-after.md), not asserted blindly:
+    # an earlier 0.55/0.20/0.15/0.10 split let ordinary day-to-day
+    # temperature differences between regions (e.g. Dalarna running ~3C
+    # cooler than Stockholm on a real dry week) REVERSE the Dalarna/
+    # Stockholm habitat contrast the new spec explicitly calls out ("Dalarna
+    # generally much more mosquito-heavy than Stockholm, EVEN DURING
+    # RELATIVELY DRY PERIODS") -- because mosquito_pressure legitimately
+    # collapses toward zero everywhere during a genuine dry spell (the
+    # adult-survival decay working as intended), leaving temperature/season
+    # as the de facto tie-breaker whenever pressure is muted. habitat_capacity
+    # needed enough weight to still read as a stable geographic floor/
+    # differentiator specifically in that condition, not just when pressure
+    # is already high.
+    #
+    # Revised again (0.50/0.35 -> 0.55/0.30) during the calibration/
+    # validation sprint (docs/calibration-validation-final.md "Habitat vs
+    # pressure"): a regression test found the ORIGINAL 0.35 direct habitat
+    # weight let an extreme-but-real habitat_capacity cell (near Sweden's
+    # actual national max, ~68.8) reach "very_high" Myggläge from
+    # habitat+season+temperature ALONE, with essentially zero
+    # mosquito_pressure (i.e. a hot/dry spell with literally no recent
+    # rain) -- directly contradicting "high habitat alone does not
+    # guarantee High Myggläge" (Phase 10). This trim doesn't fully close
+    # that gap for the single most extreme cell in the country (a known,
+    # documented, accepted residual limitation -- see the calibration
+    # report), but meaningfully narrows it and keeps typical high-habitat
+    # locations (e.g. the real Lower Dalalven cell, habitat_capacity=39.6)
+    # comfortably below "very_high" without real pressure.
+
+  # Persistent mosquito pressure (Phase 6/7) -- see feature_engineering.py's
+  # "Persistent mosquito pressure" section for the formula.
+  # pressure_survival_daily: fraction of the adult population surviving one
+  # day, with no rain/snowmelt-driven replenishment (natural mortality only,
+  # not weather-driven activity suppression, which stays in biting_activity)
+  # -- ~10% daily loss is a defensible round mid-point of published field
+  # survival estimates for temperate Aedes/Culex (commonly cited apparent
+  # daily survival in the 0.80-0.95 range depending on species/humidity; see
+  # docs/mosquito-ecology-evidence.md). pressure_lookback_days is bounded by
+  # HISTORY_DAYS_BACK (pipeline.py, currently 21) -- the weather-fetch
+  # architecture doesn't keep a longer window, so this is the practical
+  # ceiling, not an independently chosen value.
+  mosquito_pressure:
+    pressure_survival_daily: 0.90
+    pressure_lookback_days: 21
 
   # Parameters for the "biting activity" component (temperature, humidity,
   # wind, daylight/daypart, rain suppression).
@@ -137,21 +191,33 @@ model:
 #
 # "abundance" (Myggläge / population_potential) genuinely needed its own
 # bounds: it is a weighted SUM of bounded terms, not the same multiplicative
-# combination as risk, and empirically tops out far short of 100 -- checked
-# against the real full-Sweden dataset (Aug 2026, 162,358 daily cell-records
-# across all 7 forecast days): min 14.7, max 74.2, median 48.3, p99 66.9.
-# Reusing the risk bounds (0/20/40/60/80) left "very_high" (80-100)
-# permanently and completely empty (0.0% of cells, every day) -- exactly
-# the "category thresholds create nearly empty bands" failure mode the
-# diagnostics are meant to catch. These bounds were chosen by testing
-# several candidates against that same real dataset and picking the one
-# giving every band a meaningful, non-empty share:
-#   very_low 9.3% / low 18.6% / moderate 21.2% / high 34.2% / very_high 16.6%
-# Caveat: derived from one week of real August data, not a full season --
-# see docs/model-audit-after.md for the same caveat applied to the
-# combination constants above.
+# combination as risk.
+#
+# RECALIBRATED for the geographic-model redesign's calibration/validation
+# sprint (see docs/calibration-validation-final.md "Myggläge thresholds").
+# The geographic redesign changed what population_potential IS (now
+# habitat_capacity + persistent mosquito_pressure, not a weather-dominated
+# weighted sum -- see docs/geographic-model-final-report.md), which roughly
+# halved its typical national scale (old median ~32.6, new median ~15.0)
+# and made the OLD [28, 38, 48, 58] bounds put almost the entire country in
+# "very_low"/"low" even during a real historical wet peak. These new bounds
+# were derived from a combined dataset -- 18 reference locations scored
+# daily through a full real 2025 growing season (snowmelt through late
+# season, 3,294 points, Open-Meteo Archive historical weather) PLUS a real
+# full-Sweden (23,194-cell) dry-week snapshot (SMHI) -- deliberately NOT
+# set as literal percentiles of that data (a pure-quantile approach would
+# always paint some cells "very_high" even during a genuinely mosquito-poor
+# nationwide period, which is exactly what the spec's calibration sprint
+# asked to avoid). Checked against several round-number candidates; this
+# one kept "very_high" genuinely rare (0.1-0.4% of cells) without leaving it
+# completely empty, and gave "moderate" a healthy plurality under typical
+# conditions rather than any single band dominating:
+#   combined: very_low 0.8% / low 23.1% / moderate 68.7% / high 7.3% / very_high 0.1%
+# Caveat: still only one real historical year (2025) plus one real dry week
+# (Aug 2026) -- not a multi-year climatology. See docs/calibration-
+# validation-final.md for the full evaluation across candidate sets.
 thresholds:
-  abundance: [28, 38, 48, 58]
+  abundance: [5, 12, 20, 30]
 
 # Activity-adjusted exposure multipliers. These are illustrative,
 # transparent multipliers, not independently validated biological models.

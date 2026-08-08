@@ -164,6 +164,15 @@ def _record_from_score(cell_id: str, features, score, confidence_result) -> dict
         "effective_wind_ms": features.wind_speed_effective_ms,
         "temperature_c": features.current_temperature_c,
         "humidity_pct": features.humidity_current_pct,
+        # Geographic-model redesign (Phase 3/6/14): published separately
+        # from population_potential/mosquito_abundance so a future frontend
+        # can distinguish "this landscape is generally good mosquito
+        # habitat" (habitat_capacity, slow-changing) from "mosquitoes have
+        # probably actually built up here recently" (mosquito_pressure,
+        # persistent but weather-responsive) -- see feature_engineering.py
+        # and docs/geographic-model-audit-before.md.
+        "habitat_capacity": features.habitat_capacity,
+        "mosquito_pressure": features.mosquito_pressure,
     }
 
 
@@ -338,6 +347,8 @@ def run_pipeline(
                 rolling=rolling_by_cell.get(cell.cell_id),
                 calm_threshold_ms=config.wind_dynamics_params.get("calm_threshold_ms", 1.8),
                 wind_shelter_params=config.wind_shelter_params,
+                pressure_survival_daily=config.mosquito_pressure_params.get("pressure_survival_daily", 0.90),
+                pressure_lookback_days=int(config.mosquito_pressure_params.get("pressure_lookback_days", 21)),
             )
             score = compute_score(features, config, "general")
             horizon_hours = max(0.0, (target - run_time).total_seconds() / 3600.0)
@@ -388,6 +399,8 @@ def run_pipeline(
                     rolling=rolling_by_cell.get(cell.cell_id),
                     calm_threshold_ms=config.wind_dynamics_params.get("calm_threshold_ms", 1.8),
                     wind_shelter_params=config.wind_shelter_params,
+                    pressure_survival_daily=config.mosquito_pressure_params.get("pressure_survival_daily", 0.90),
+                    pressure_lookback_days=int(config.mosquito_pressure_params.get("pressure_lookback_days", 21)),
                 )
                 score = compute_score(features, config, "general")
                 horizon_hours = max(0.0, (target - run_time).total_seconds() / 3600.0)
@@ -421,6 +434,14 @@ def run_pipeline(
                 "mosquito_abundance": peak["mosquito_abundance"],
                 "activity_modifier": peak["activity_modifier"],
                 "exposure_modifier": peak["exposure_modifier"],
+                # Geographic-model redesign (Phase 3/6/14): published at the
+                # daily record's top level too (already present nested under
+                # dayparts.<part>, via _record_from_score), so a consumer
+                # that only reads the daily/peak record still gets Myggläge's
+                # habitat/pressure breakdown without needing to reach into
+                # dayparts.
+                "habitat_capacity": peak["habitat_capacity"],
+                "mosquito_pressure": peak["mosquito_pressure"],
                 # Representative LOCAL time for the peak daypart (e.g.
                 # "20:00") -- honestly reflects the model's daypart-level
                 # (not true hourly) resolution over the 7-day horizon,

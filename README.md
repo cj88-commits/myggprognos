@@ -28,7 +28,7 @@ For any point in Sweden, at any hour over the next week, the app answers (in Swe
 
 | Component | Meaning |
 |---|---|
-| **Population potential** | How favourable recent weeks' weather has been for mosquito development (warmth, rainfall, moisture, standing water, habitat). |
+| **Population potential** | How many mosquitoes are probably around, independent of the current hour's weather — driven mainly by `habitat_capacity` (static geography: wetland/water/forest habitat quality, see below) and `mosquito_pressure` (a persistent, decay-weighted accumulation of recent rain/snowmelt-driven emergence — see [Habitat capacity and mosquito pressure](#habitat-capacity-and-persistent-mosquito-pressure)). |
 | **Biting activity** | How active mosquitoes are likely to be at the selected hour, given temperature, humidity, wind, and time of day. |
 | **Exposure** | How likely a person is to encounter mosquitoes given the terrain, proximity to water, and their chosen activity. |
 
@@ -62,14 +62,37 @@ The frontend switches the map between three named products (all published per ce
 
 Two further layers (`biting_activity`, `confidence`) are available under "Fler inställningar"/the settings sheet for anyone who wants the raw activity component or the data-quality score directly, rather than as one of the three primary products above.
 
-### Population potential factors
+### Habitat capacity and persistent mosquito pressure
 
-Population potential now combines: recent and cumulative rainfall (1/3/7/14/21-day sums), average and
-current temperature, humidity, soil moisture (with a transparent rainfall/temperature-derived fallback where
-direct measurements aren't available), wind, spring snowmelt, forest and wetland proximity, lake/water-body
-density, and **standing-water persistence** — a decay-weighted combination of recent rainfall, terrain
-drainage (slope), and nearby wetlands/lakes estimating how long rain-fed breeding pools are likely to last
-(see `forecast/src/feature_engineering.py::_standing_water_persistence`).
+Following a geographic-model redesign (see `docs/geographic-model-audit-before.md`,
+`docs/geographic-benchmark-after.md`, `docs/mosquito-ecology-evidence.md`), population potential
+("Myggläge") is built from two explicitly separated concepts rather than one flat weighted sum of
+weather terms:
+
+- **`habitat_capacity`** (0–100, `forecast/src/static_features.py::compute_habitat_capacity`) — a
+  slow-changing, weather-independent score for "how capable is this landscape of supporting large
+  mosquito populations if weather is favourable", from multi-scale wetland/water fractions (500m/2km/
+  5km), forest-water/wetland-water edge density, small-water density (discounting both deep lake
+  interior and open marine coastline, since neither is real breeding habitat), a static
+  slope/wetland/water-proximity floodplain-potential proxy, and urban/elevation suppression. Computed
+  once per cell (like other static features), not recomputed per hour.
+- **`mosquito_pressure`** (0–100, `forecast/src/feature_engineering.py`, "Persistent mosquito
+  pressure" section) — a persistent, decay-weighted accumulation of daily rain- and snowmelt-driven
+  emergence, gated by `habitat_capacity`, with a configurable adult-survival rate
+  (`model.yaml mosquito_pressure.pressure_survival_daily`, default 0.90/day). Deterministically
+  re-derived from the available weather-history window every run (no separate persisted "yesterday's
+  pressure" state) — an established population in good habitat that stops raining for several days
+  declines gradually, not instantly, and one warm rainy day in poor habitat doesn't spike it either.
+  Snowmelt-driven emergence uses real snow-depth history where the weather provider exposes it (Open-
+  Meteo), and a latitude-shifted seasonal-timing fallback where it doesn't (SMHI — see
+  `docs/geographic-model-audit-before.md` and "Weather data source" below).
+
+`population_potential` itself is a weighted combination of mostly `mosquito_pressure` and
+`habitat_capacity`, plus modest `temperature`/`season` suitability terms — see
+`forecast/src/model.py::compute_population_potential` and `model.yaml population_weights`. Both
+`habitat_capacity` and `mosquito_pressure` are published per record for explainability (e.g. a future
+"lots of mosquitoes here, but wind is keeping activity down right now" narrative — already partially
+implemented, see `explanation.py::_abundance_vs_activity_clause`).
 
 ### Wind: forecast wind, effective (shelter-adjusted) wind, and the calm-evening/wind-drop correction
 

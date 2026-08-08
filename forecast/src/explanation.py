@@ -15,14 +15,18 @@ from feature_engineering import FeatureSet
 from model import NEGATIVE_LABELS, POSITIVE_LABELS, ScoreResult
 
 POPULATION_LABELS = {
+    # Geographic-model redesign (Phase 8): population_potential is now
+    # driven primarily by `pressure` (persistent mosquito_pressure, Phase 6)
+    # and `habitat_capacity` (Phase 3) rather than the old per-weather-term
+    # breakdown -- these two labels are deliberately worded to distinguish
+    # "there's probably a lot of mosquitoes already established here"
+    # (pressure) from "this landscape is well-suited to mosquitoes in
+    # general" (habitat_capacity), matching the new spec's Phase 14 example
+    # sentences.
+    "pressure": "Mycket mygg har troligen redan utvecklats i området",
+    "habitat_capacity": "Området har goda förutsättningar för mygg (våtmark, vatten och skog)",
     "temperature": "Varma senaste dagarna",
-    "rainfall": "Mycket nederbörd de senaste två veckorna",
-    "moisture": "Fuktig/vattensjuk mark",
-    "standing_water": "Ihållande stående vatten",
-    "wetland": "Närliggande våtmarker och stående vatten",
-    "forest": "Skogsmark som ger skydd och häckningsplatser",
     "season": "Högsäsong för mygg vid denna tid på året",
-    "snowmelt": "Vårflod / snösmältning",
 }
 
 
@@ -130,6 +134,27 @@ def _narrative_details(features: FeatureSet) -> list[str]:
     return parts
 
 
+def _abundance_vs_activity_clause(score: ScoreResult) -> str | None:
+    """Phase 14 (geographic-model redesign): the new spec's whole point in
+    separating Myggläge (population_potential/mosquito_pressure, weather-
+    history-driven) from Myggrisk (biting_activity, current-hour-driven) is
+    to be able to say things like "there's probably a lot of mosquitoes
+    here, but wind is keeping activity down right now" -- a distinction
+    that was structurally impossible before this iteration, since the old
+    formula multiplied population and activity straight through with no
+    separate narrative for "high underlying population, suppressed right
+    now" vs. "genuinely few mosquitoes". Only fires when population is at
+    least moderate AND wind is substantially suppressing activity (not just
+    "activity happens to be low for some other reason", e.g. cold/midday),
+    so the clause stays specifically about wind, matching the new spec's
+    example sentences."""
+    population = score.population_potential
+    wind_suppression = score.activity_terms.get("wind_suppression", 1.0)
+    if population >= 40.0 and wind_suppression < 0.5:
+        return "Det är sannolikt mycket mygg i området, men vinden håller nere aktiviteten just nu."
+    return None
+
+
 def _summary_text(score: ScoreResult, features: FeatureSet, positive: list[Factor], negative: list[Factor]) -> str:
     from model import risk_category
 
@@ -151,6 +176,10 @@ def _summary_text(score: ScoreResult, features: FeatureSet, positive: list[Facto
         names = [f.label[0].lower() + f.label[1:] for f in negative[:2]]
         joined = " och ".join(names)
         summary += f" {joined[0].upper()}{joined[1:]} dämpar dock aktiviteten."
+
+    abundance_clause = _abundance_vs_activity_clause(score)
+    if abundance_clause:
+        summary += f" {abundance_clause}"
 
     return summary
 

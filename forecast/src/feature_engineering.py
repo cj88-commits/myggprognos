@@ -18,6 +18,7 @@ are unaffected.
 from __future__ import annotations
 
 import bisect
+import itertools
 import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -150,6 +151,28 @@ class FeatureSet:
     slope_deg: float
     coastal_exposure: float
     water_body_density: float
+
+    # Habitat capacity (geographic-model redesign, Phase 3): slow-changing,
+    # weather-independent "how capable is this landscape of supporting
+    # large mosquito populations if weather is favourable" -- see
+    # static_features.py::compute_habitat_capacity. Copied straight from
+    # the static layer since it's computed once per cell there, not
+    # recomputed on every hourly/daypart call.
+    habitat_capacity: float
+
+    # Persistent mosquito pressure (Phase 6): decay-weighted accumulation of
+    # daily rain/degree-day-driven AND snowmelt-driven emergence, gated by
+    # habitat_capacity -- see _compute_mosquito_pressure. This is the
+    # primary driver of Myggläge (model.py's population_potential) as of
+    # this iteration; unlike the old population_potential, it does not
+    # collapse to the current instant's weather alone.
+    mosquito_pressure: float
+    # True if a real snow_depth history was available and used for the
+    # snowmelt contribution to mosquito_pressure (Open-Meteo); False if the
+    # latitude/timing fallback proxy was used instead (SMHI -- see
+    # _fallback_snowmelt_day_signal). Surfaced for confidence/explainability,
+    # not used in scoring itself.
+    pressure_used_real_snow_data: bool
 
     # Data quality flags (feed into confidence.py)
     weather_missing_fraction: float
@@ -497,6 +520,140 @@ def _emergence_potential(
     return round(max(0.0, min(1.0, raw * site_persistence)), 4)
 
 
+# --- Persistent mosquito pressure (Phase 6) --------------------------------
+#
+# pressure_today = surviving_adults + recent_emergence
+#     surviving_adults = previous_pressure x survival
+#     recent_emergence = habitat_capacity x emergence_conditions
+#
+# Implemented as the closed form of that recursion (an exponentially-
+# weighted sum over the available history window) rather than literal
+# day-over-day state, per the new spec's stated preference: "If storing
+# state between forecast runs creates undesirable architectural complexity,
+# investigate deriving the state deterministically from a sufficiently long
+# historical weather window. Prefer reproducibility." Every forecast run
+# re-derives the same pressure from the same weather history, with no
+# database/cache of "yesterday's computed pressure" to keep in sync --
+# genuinely reproducible from weather alone, and trivially backfillable for
+# any past date the history cache covers.
+#
+# Bounded by construction: normalizing by (1 - survival) means pressure
+# reaches 1.0 only in the limit of maximal emergence sustained forever, not
+# from a single big day.
+PRESSURE_LOOKBACK_DAYS_DEFAULT = 21  # bounded by HISTORY_DAYS_BACK (pipeline.py) -- see docs/geographic-model-audit-before.md Phase 6 for the trade-off
+PRESSURE_SURVIVAL_DAILY_DEFAULT = 0.90  # ~10% daily adult loss -- see docs/mosquito-ecology-evidence.md
+
+SNOW_MELT_RATE_REFERENCE_M = 0.02  # 2cm/day snow-depth decline treated as a strong, fully-saturating melt signal
+
+# Fallback-only (no real snow_depth history, e.g. SMHI): a physically-
+# motivated LATITUDE SHIFT of the assumed spring melt window, not a bonus
+# multiplier -- later melt further north, consistent with well-documented
+# Nordic climatology (see docs/mosquito-ecology-evidence.md). Still requires
+# real per-cell temperature (via freezing_recently) to actually contribute;
+# a warm, dry, low-habitat cell at the same latitude gets no boost from this
+# alone (habitat_capacity and the rain-driven series still gate the total).
+FALLBACK_MELT_BASE_DAY = 55.0
+FALLBACK_MELT_LATITUDE_SHIFT_DAYS_PER_DEGREE = 3.0
+FALLBACK_MELT_WINDOW_WIDTH_DAYS = 25.0
+FALLBACK_MELT_EMERGENCE_LAG_DAYS = 15.0  # meltwater pools need time to develop into adults too
+
+
+def _bell(value: float, optimum: float, width: float) -> float:
+    """Local copy of model.py::bell_curve -- see clamp() above for why
+    feature_engineering.py can't import from model.py."""
+    if width <= 0:
+        return 1.0 if value == optimum else 0.0
+    return math.exp(-0.5 * ((value - optimum) / width) ** 2)
+
+
+def _fallback_snowmelt_day_signal(day_of_year: int, latitude: float) -> float:
+    """0-1 snowmelt-emergence signal for ONE calendar day, used only when no
+    real snow_depth history is available (see _snowmelt_daily_series). A
+    bell curve centered on the assumed local melt date (shifted later with
+    latitude) plus a fixed development lag -- deliberately NOT a step
+    function, and deliberately not scaled by latitude directly (only the
+    TIMING shifts; the peak height is the same everywhere, so this cannot
+    become a disguised "Norrland bonus" -- actual pressure still requires
+    habitat_capacity and the real per-cell temperature/rain series)."""
+    assumed_melt_day = FALLBACK_MELT_BASE_DAY + max(0.0, latitude - 55.0) * FALLBACK_MELT_LATITUDE_SHIFT_DAYS_PER_DEGREE
+    return _bell(day_of_year, optimum=assumed_melt_day + FALLBACK_MELT_EMERGENCE_LAG_DAYS, width=FALLBACK_MELT_WINDOW_WIDTH_DAYS)
+
+
+def _daily_rain_emergence_series(rolling: RollingWindows, idx: int, total_len: int, lookback_days: int) -> list[float]:
+    """0-1 per day, today first (index 0), for as many days back as the
+    available history covers (up to lookback_days) -- generalizes
+    _emergence_potential's four coarse buckets to per-day resolution, reusing
+    the same rain-lag x degree-day-development logic."""
+    series = []
+    for day_offset in range(lookback_days):
+        day_end_idx = idx - day_offset * 24
+        if day_end_idx < 0:
+            break
+        day_rain = _range_sum(rolling.precip_cumsum, day_end_idx, 24, total_len)
+        gdd_since = _range_sum(rolling.gdd_cumsum, idx, day_offset * 24 + 24, total_len) / 24.0
+        rain_signal = clamp(min(day_rain, EMERGENCE_RAIN_REFERENCE_MM) / EMERGENCE_RAIN_REFERENCE_MM, 0.0, 1.0)
+        series.append(rain_signal * _development_progress(gdd_since))
+    return series
+
+
+def _snowmelt_daily_series(
+    weather: HourlyWeather,
+    rolling: RollingWindows,
+    idx: int,
+    total_len: int,
+    target_date,
+    latitude: float,
+    lookback_days: int,
+) -> tuple[list[float], bool]:
+    """(series, used_real_snow_data) -- see FeatureSet.pressure_used_real_snow_data."""
+    has_real_snow = (
+        bool(weather.snow_depth_m)
+        and len(weather.snow_depth_m) == len(weather.times)
+        and any(v is not None for v in weather.snow_depth_m)
+    )
+    if has_real_snow:
+        series = []
+        n_snow = len(weather.snow_depth_m)
+        for day_offset in range(lookback_days):
+            day_end_idx = idx - day_offset * 24
+            day_start_idx = day_end_idx - 24
+            if day_start_idx < 0 or day_end_idx < 0 or day_end_idx >= n_snow or day_start_idx >= n_snow:
+                break
+            snow_start = weather.snow_depth_m[day_start_idx]
+            snow_end = weather.snow_depth_m[day_end_idx]
+            if snow_start is None or snow_end is None:
+                series.append(0.0)
+                continue
+            melt_m = max(0.0, snow_start - snow_end)
+            melt_signal = clamp(melt_m / SNOW_MELT_RATE_REFERENCE_M, 0.0, 1.0)
+            gdd_since = _range_sum(rolling.gdd_cumsum, idx, day_offset * 24 + 24, total_len) / 24.0
+            series.append(melt_signal * _development_progress(gdd_since))
+        return series, True
+
+    series = []
+    for day_offset in range(lookback_days):
+        d = target_date - timedelta(days=day_offset)
+        doy = d.timetuple().tm_yday
+        series.append(_fallback_snowmelt_day_signal(doy, latitude))
+    return series, False
+
+
+def _mosquito_pressure_fraction(daily_emergence: list[float], habitat_capacity_fraction: float, survival_daily: float) -> float:
+    """Closed-form exponentially-weighted sum -- see module section header.
+    `daily_emergence` must be today-first (index 0 = today, index d = d days
+    ago), already combining rain- and snowmelt-driven contributions."""
+    if not daily_emergence:
+        return 0.0
+    survival_daily = clamp(survival_daily, 0.0, 0.999)
+    total = 0.0
+    weight = 1.0
+    for emergence in daily_emergence:
+        total += clamp(emergence, 0.0, 1.0) * weight
+        weight *= survival_daily
+    normalization = 1.0 - survival_daily
+    return clamp(normalization * total * habitat_capacity_fraction, 0.0, 1.0)
+
+
 def compute_features(
     static: StaticFeatures,
     weather: HourlyWeather,
@@ -505,6 +662,8 @@ def compute_features(
     rolling: RollingWindows | None = None,
     calm_threshold_ms: float = DEFAULT_CALM_THRESHOLD_MS,
     wind_shelter_params: dict | None = None,
+    pressure_survival_daily: float = PRESSURE_SURVIVAL_DAILY_DEFAULT,
+    pressure_lookback_days: int = PRESSURE_LOOKBACK_DAYS_DEFAULT,
 ) -> FeatureSet:
     if target_time.tzinfo is None:
         target_time = target_time.replace(tzinfo=timezone.utc)
@@ -783,6 +942,31 @@ def compute_features(
         site_persistence=site_persistence,
     )
 
+    # Persistent mosquito pressure (Phase 6/7) -- see module section header.
+    # Requires `rolling` for the per-day cumsum lookups the daily series
+    # needs; the no-`rolling` direct-call path (module docstring: "keeps
+    # the original, simpler per-call behaviour") falls back to a same-
+    # instant approximation with no decay, which is fine for the few
+    # direct-call test paths that don't pass `rolling` but would be far too
+    # slow/duplicative to implement as a second full O(days) computation.
+    habitat_capacity_fraction = clamp(static.habitat_capacity / 100.0, 0.0, 1.0)
+    if rolling is not None and idx is not None:
+        rain_series = _daily_rain_emergence_series(rolling, idx, total_len, pressure_lookback_days)
+        snow_series, used_real_snow = _snowmelt_daily_series(
+            weather, rolling, idx, total_len, local_time.date(), weather.latitude, pressure_lookback_days
+        )
+        combined_series = [
+            clamp(r + s, 0.0, 1.0)
+            for r, s in itertools.zip_longest(rain_series, snow_series, fillvalue=0.0)
+        ]
+        mosquito_pressure_fraction = _mosquito_pressure_fraction(
+            combined_series, habitat_capacity_fraction, pressure_survival_daily
+        )
+        pressure_used_real_snow_data = used_real_snow
+    else:
+        mosquito_pressure_fraction = clamp(habitat_capacity_fraction * emergence_potential, 0.0, 1.0)
+        pressure_used_real_snow_data = False
+
     return FeatureSet(
         current_temperature_c=current_temp,
         daily_min_temperature_c=daily_min,
@@ -841,6 +1025,9 @@ def compute_features(
         slope_deg=static.slope_deg,
         coastal_exposure=static.coastal_exposure,
         water_body_density=static.water_body_density,
+        habitat_capacity=static.habitat_capacity,
+        mosquito_pressure=round(mosquito_pressure_fraction * 100.0, 3),
+        pressure_used_real_snow_data=pressure_used_real_snow_data,
         weather_missing_fraction=round(weather_missing_fraction, 4),
         used_synthetic_weather=weather.used_fallback,
     )
