@@ -852,7 +852,6 @@ def compute_static_features_from_rasters(
 
     import rasterio  # noqa: local import, optional heavy dependency
     from shapely.geometry import Point, shape
-    from shapely.ops import unary_union
     from shapely.strtree import STRtree
 
     wc_tiles = _index_tiles(worldcover_dir)
@@ -869,9 +868,21 @@ def compute_static_features_from_rasters(
     if boundary_path.exists():
         with open(boundary_path, "r", encoding="utf-8") as fh:
             boundary_data = json.load(fh)
-        boundary = unary_union([shape(feat["geometry"]) for feat in boundary_data["features"]])
-        outline = boundary.boundary
-        segments = list(outline.geoms) if outline.geom_type == "MultiLineString" else [outline]
+        geometries = [shape(feat["geometry"]) for feat in boundary_data["features"]]
+        # Deliberately skip unary_union() here (confirmed live: 180s+ on a
+        # raster-derived boundary with tens of thousands of parts, see
+        # grid.py::_load_boundary_polygon for the same fix) and take each
+        # part's own .boundary instead of the dissolved multipolygon's --
+        # a few parts' touching edges end up double-counted as "coastline"
+        # this way, which very locally overstates coastal_exposure right at
+        # that internal seam, but that's a small, localized approximation
+        # next to the alternative of unioning tens of thousands of parts on
+        # every static-feature run.
+        parts = [p for geom in geometries for p in (geom.geoms if geom.geom_type == "MultiPolygon" else [geom])]
+        segments = []
+        for part in parts:
+            outline = part.boundary
+            segments.extend(outline.geoms if outline.geom_type == "MultiLineString" else [outline])
         coast_tree = STRtree(segments)
 
     def coastal_exposure_for(lon: float, lat: float) -> float:

@@ -37,6 +37,10 @@ data/static/cell_features.json.placeholder_backup
 # single national GeoTIFF, free CC0 re-download, not sensible to commit.
 data/static/nmd/
 
+# Per-tile checkpoint cache for scripts/build_worldcover_boundary.py --
+# regenerable from data/static/worldcover/, not sensible to commit.
+data/static/worldcover_boundary_cache/
+
 # NOTE: data/generated/ is intentionally NOT ignored. forecast.yml commits
 # data/generated/latest on every run (see its "Commit and push updated
 # forecast" step) and deploy-pages.yml reads it straight from the repo to

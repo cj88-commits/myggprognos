@@ -50,10 +50,12 @@ def load_parts(path: Path) -> list:
     with open(path, "r", encoding="utf-8") as fh:
         data = json.load(fh)
     geoms = [shape(feat["geometry"]) for feat in data["features"]]
-    merged = unary_union(geoms)
-    if merged.geom_type == "Polygon":
-        return [merged]
-    return list(merged.geoms)
+    # Deliberately NOT unary_union()'d: this just needs a flat list of
+    # Polygon parts to index into land_tree/lake_tree below, and dissolving
+    # a raster-derived boundary's tens of thousands of parts into fewer,
+    # bigger ones took 180s+ for zero functional benefit here (confirmed
+    # live -- see grid.py::_load_boundary_polygon for the same fix).
+    return [p for geom in geoms for p in (geom.geoms if geom.geom_type == "MultiPolygon" else [geom])]
 
 
 def main() -> None:

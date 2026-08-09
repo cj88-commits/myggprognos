@@ -65,13 +65,31 @@ def _load_boundary_polygon():
     if not boundary_path.exists():
         return None
     try:
-        from shapely.geometry import shape
-        from shapely.ops import unary_union
+        from shapely.geometry import MultiPolygon, shape
+        from shapely.prepared import prep
 
         with open(boundary_path, "r", encoding="utf-8") as fh:
             data = json.load(fh)
         geometries = [shape(feature["geometry"]) for feature in data["features"]]
-        return unary_union(geometries)
+        # A raster-derived boundary (see scripts/build_worldcover_boundary.py)
+        # can have tens of thousands of parts (one per resolved skerry), vs.
+        # ~172 for the old coarse Natural Earth source. Deliberately NOT
+        # passed through unary_union(): confirmed live, dissolving that many
+        # parts' shared/touching edges took 180s+ on its own, for a result
+        # that behaves identically to the un-dissolved version for every
+        # actual use below (.contains(), STRtree indexing, iterating
+        # .geoms) -- nothing here needs adjacent parts merged into fewer,
+        # bigger ones, so skip the cost entirely and flatten to one
+        # MultiPolygon directly. Plain MultiPolygon.contains() has no
+        # spatial index and would degrade toward O(parts) per query,
+        # dominated by the many candidate points that are NOT on land (most
+        # of the bbox is sea) and so must be checked against every part
+        # before returning False -- prep() builds a GEOS prepared geometry
+        # (internal STRtree) once instead, reused by every .contains() call
+        # below.
+        parts = [p for geom in geometries for p in (geom.geoms if geom.geom_type == "MultiPolygon" else [geom])]
+        merged = parts[0] if len(parts) == 1 else MultiPolygon(parts)
+        return prep(merged), merged
     except Exception:
         return None
 
@@ -89,7 +107,8 @@ def generate_grid(
     resolution can't accidentally generate millions of cells.
     """
     bbox = bbox or SWEDEN_BBOX
-    boundary = _load_boundary_polygon()
+    loaded = _load_boundary_polygon()
+    boundary_prepared, boundary_raw = loaded if loaded is not None else (None, None)
 
     lat_step = resolution_km / KM_PER_DEGREE_LAT
     mid_lat = (bbox["min_lat"] + bbox["max_lat"]) / 2
@@ -104,11 +123,11 @@ def generate_grid(
         while lon <= bbox["max_lon"]:
             if _in_sweden_bbox(lat, lon):
                 include = True
-                if boundary is not None:
+                if boundary_prepared is not None:
                     try:
                         from shapely.geometry import Point
 
-                        include = boundary.contains(Point(lon, lat))
+                        include = boundary_prepared.contains(Point(lon, lat))
                     except Exception:
                         include = True
                 if include:
@@ -128,8 +147,8 @@ def generate_grid(
         lat += lat_step
         row += 1
 
-    if boundary is not None and (max_cells is None or len(cells) < max_cells):
-        cells.extend(_supplementary_island_cells(cells, boundary, max_cells))
+    if boundary_raw is not None and (max_cells is None or len(cells) < max_cells):
+        cells.extend(_supplementary_island_cells(cells, boundary_raw, max_cells))
 
     return cells
 
@@ -245,12 +264,33 @@ def _supplementary_island_cells(
     # under GAP_FILL_FACTOR's threshold, so no cell ever got added
     # there. min_dist_km below instead takes the *local* scale for
     # whichever part is currently being probed.
-    placed = np.array([[c.longitude, c.latitude] for c in cells], dtype=np.float64)
+    # A raster-derived boundary (see scripts/build_worldcover_boundary.py)
+    # can add tens of thousands of supplementary points -- np.vstack-per-
+    # point (the original approach) reallocates and copies the *entire*
+    # array on every single addition, making the whole function O(n^2) in
+    # the number of points added. `placed` is instead a preallocated buffer
+    # grown by doubling (the standard dynamic-array trick), with `placed_n`
+    # tracking how much of it is actually in use; min_dist_km only reads
+    # the `:placed_n` slice, so each addition is O(1) amortized.
+    initial = np.array([[c.longitude, c.latitude] for c in cells], dtype=np.float64)
+    placed_n = len(initial)
+    placed = np.empty((max(placed_n * 2, 1024), 2), dtype=np.float64)
+    placed[:placed_n] = initial
 
     def min_dist_km(lon: float, lat: float, lon_scale: float) -> float:
-        dlon = (placed[:, 0] - lon) * lon_scale * KM_PER_DEGREE_LAT
-        dlat = (placed[:, 1] - lat) * KM_PER_DEGREE_LAT
+        active = placed[:placed_n]
+        dlon = (active[:, 0] - lon) * lon_scale * KM_PER_DEGREE_LAT
+        dlat = (active[:, 1] - lat) * KM_PER_DEGREE_LAT
         return float(np.sqrt((dlon * dlon + dlat * dlat).min()))
+
+    def add_placed(lon: float, lat: float) -> None:
+        nonlocal placed, placed_n
+        if placed_n >= len(placed):
+            grown = np.empty((len(placed) * 2, 2), dtype=np.float64)
+            grown[:placed_n] = placed[:placed_n]
+            placed = grown
+        placed[placed_n] = (lon, lat)
+        placed_n += 1
 
     def _polygon_pieces(geom) -> list:
         """Flatten a Polygon/MultiPolygon/GeometryCollection (the latter
@@ -269,8 +309,19 @@ def _supplementary_island_cells(
 
     extra: list[GridCell] = []
     for i, part in enumerate(parts):
-        interior = part.buffer(-fringe_deg)
-        fringe = part.difference(interior) if not interior.is_empty else part
+        # A raster-derived boundary (see scripts/build_worldcover_boundary.py)
+        # can produce tens of thousands of parts, most of them lone skerries
+        # far smaller than the fringe width -- part.buffer(-fringe_deg) is
+        # guaranteed empty for any part whose bounding box doesn't have room
+        # for a fringe_deg inward erosion on both axes, so skip the (still
+        # real, if fast per-call) buffer() cost entirely for those and go
+        # straight to "whole part is the fringe", same end result.
+        minx, miny, maxx, maxy = part.bounds
+        if (maxx - minx) < 2 * fringe_deg and (maxy - miny) < 2 * fringe_deg:
+            fringe = part
+        else:
+            interior = part.buffer(-fringe_deg)
+            fringe = part.difference(interior) if not interior.is_empty else part
         # A part's fringe is frequently itself disconnected -- e.g. the
         # mainland's coastal band, intersected with a genuinely
         # fragmented stretch of coast (Bohuslan, the outer archipelago),
@@ -306,7 +357,7 @@ def _supplementary_island_cells(
                             )
                         )
                         piece_added += 1
-                        placed = np.vstack([placed, [[lon, lat]]])
+                        add_placed(lon, lat)
                         if max_cells is not None and len(cells) + len(extra) >= max_cells:
                             return extra
                     lon += lon_step
@@ -329,7 +380,7 @@ def _supplementary_island_cells(
                             region=_approx_region(rep.y),
                         )
                     )
-                    placed = np.vstack([placed, [[rep.x, rep.y]]])
+                    add_placed(rep.x, rep.y)
                     if max_cells is not None and len(cells) + len(extra) >= max_cells:
                         return extra
 
