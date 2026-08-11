@@ -47,6 +47,8 @@ import rasterio
 import shapely
 from rasterio.features import shapes
 from shapely.geometry import MultiPolygon, mapping, shape
+from shapely.ops import unary_union
+from shapely.strtree import STRtree
 
 import _pathsetup  # noqa: F401  (sets up sys.path for forecast/src imports)
 from config import STATIC_DATA_DIR
@@ -54,25 +56,59 @@ from config import STATIC_DATA_DIR
 WATER_CLASS = 80
 NODATA_VALUE = 0
 
+# A raw part is dropped only when MOST of its own area is already inside the
+# original Natural Earth boundary -- not merely because it touches it
+# somewhere. Two cruder criteria were tried first and both re-created the
+# "white island" bug this rebuild exists to fix, just for different land:
+#   1. Bounding-box size (anything over ~8km assumed to be an already-
+#      covered landmass) silently dropped real Stockholm-archipelago
+#      islands in the 8-20km range (Ingmarsö, Blidoe, Yxlan, ...) that
+#      Natural Earth never resolved either.
+#   2. ANY overlap with Natural Earth (boolean .intersects()) is closer but
+#      still wrong: a part that only brushes NE's coarse edge gets dropped
+#      *entirely*, losing whatever real extra area WorldCover resolved
+#      beyond NE's cruder outline for that same piece of land -- confirmed
+#      live, a reported coastal point's local coverage dropped from 38% to
+#      29% switching from the bbox filter to a plain intersects() filter.
+# A part connected to the mainland's own coastline (the actual cause of the
+# original performance blowup -- one part with ~25,000 vertices, minutes to
+# simplify alone) is overwhelmingly *inside* Natural Earth's mainland
+# polygon, so the >50%-area-overlap threshold below still drops it (and
+# still avoids ever calling .simplify() on it), while a real island that
+# only clips a corner of NE's rough outline stays in at its full extent.
+REDUNDANT_OVERLAP_FRACTION = 0.5
 
-# Above this bounding-box size (either dimension), a raw part is assumed to
-# be a big, already-well-represented landmass (mainland fragment, Gotland,
-# Oland, ...) rather than a small island the old Natural Earth boundary
-# missed -- confirmed live: one such part in a single tile (a mainland/
-# Bohuslan chunk, ~25,000 vertices at 50m downsampling) took minutes to
-# simplify on its own, completely dominating that tile's runtime, for a
-# shape whose coarse Natural Earth equivalent is already perfectly
-# adequate (the whole point of this rebuild is catching skerries the old
-# source never resolved at all, not re-deriving the mainland's own
-# coastline). These large parts are dropped entirely -- see main()'s
-# --finalize step, which unions the small parts kept here with the
-# original Natural Earth boundary (backed up to
-# sweden_boundary.natural_earth_original.geojson) rather than replacing it.
-LARGE_PART_KM = 8.0
+
+def _load_ne_index(base_boundary_path: Path):
+    """Return (parts, STRtree(parts)) for the original Natural Earth
+    boundary, or (None, None) if it isn't present."""
+    if not base_boundary_path.exists():
+        return None, None
+    with open(base_boundary_path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    geoms = [shape(feat["geometry"]) for feat in data["features"]]
+    parts = [p for g in geoms for p in (g.geoms if g.geom_type == "MultiPolygon" else [g])]
+    return parts, STRtree(parts)
 
 
-def tile_land_parts(tif_path: Path, downsample: int, simplify_deg: float, verbose: bool = False) -> list:
-    """Return a list of simplified, NOT unioned, small-island land Polygons for one tile."""
+def _redundant_with_ne(part, ne_parts, ne_tree) -> bool:
+    if ne_tree is None or part.area <= 0:
+        return False
+    idxs = ne_tree.query(part)
+    if len(idxs) == 0:
+        return False
+    nearby = unary_union([ne_parts[i] for i in idxs])
+    if not part.intersects(nearby):
+        return False
+    return (part.intersection(nearby).area / part.area) > REDUNDANT_OVERLAP_FRACTION
+
+
+def tile_land_parts(
+    tif_path: Path, downsample: int, simplify_deg: float, ne_parts=None, ne_tree=None, verbose: bool = False
+) -> list:
+    """Return a list of simplified, NOT unioned, land Polygons for one tile --
+    excluding only parts that are mostly redundant with the original Natural
+    Earth boundary (`ne_parts`/`ne_tree`), see _redundant_with_ne."""
     t0 = time.time()
     with rasterio.open(tif_path) as ds:
         arr = ds.read(1)
@@ -100,21 +136,18 @@ def tile_land_parts(tif_path: Path, downsample: int, simplify_deg: float, verbos
     del land_ds
     n_raw = len(raw_geoms)
 
-    mid_lat = (transform.f + (transform.f + transform.e * h)) / 2
-    lon_km = 111.32 * abs(math.cos(math.radians(mid_lat)))
-    small = []
-    n_dropped_large = 0
-    for p in raw_geoms:
-        minx, miny, maxx, maxy = p.bounds
-        if (maxx - minx) * lon_km > LARGE_PART_KM or (maxy - miny) * 111.32 > LARGE_PART_KM:
-            n_dropped_large += 1
-            continue
-        small.append(p)
-    raw_geoms = np.array(small)
+    if ne_tree is not None:
+        kept = [p for p in raw_geoms if not _redundant_with_ne(p, ne_parts, ne_tree)]
+        n_dropped = n_raw - len(kept)
+        raw_geoms = np.array(kept)
+    else:
+        n_dropped = 0
+        raw_geoms = np.array(raw_geoms)
     if verbose:
         print(
             f"    polygonize: {time.time() - t0:.1f}s, {n_raw} raw parts "
-            f"({n_dropped_large} large landmass parts dropped, {len(raw_geoms)} small kept)",
+            f"({n_dropped} >{REDUNDANT_OVERLAP_FRACTION:.0%} redundant with Natural Earth, dropped; "
+            f"{len(raw_geoms)} kept)",
             flush=True,
         )
 
@@ -130,7 +163,31 @@ def tile_land_parts(tif_path: Path, downsample: int, simplify_deg: float, verbos
     if verbose:
         print(f"    per-part simplify (vectorized): {time.time() - t0:.1f}s", flush=True)
 
-    return list(simplified)
+    t0 = time.time()
+    # Raster-to-vector output from shapes() occasionally has borderline-
+    # invalid topology (e.g. a ring touching itself at one point where two
+    # same-value pixel blocks meet only diagonally) that simplify() doesn't
+    # necessarily clean up. Downstream code used to get this fixed for free
+    # as a side effect of unary_union() -- confirmed live, removing that
+    # union (see module docstring) surfaced a real
+    # "TopologyException: side location conflict" from a plain
+    # square.intersection(MultiPolygon(these parts)) call in
+    # prepare_cell_geometry.py. make_valid() here fixes it once, at the
+    # source, for every consumer of this file instead of papering over it
+    # per-caller. A fixed part can occasionally split into multiple pieces
+    # (or, rarely, degrade to a stray line/point) -- flatten to Polygons
+    # only, dropping non-polygonal debris.
+    fixed = shapely.make_valid(simplified)
+    parts = []
+    for g in fixed:
+        if g.geom_type == "Polygon":
+            parts.append(g)
+        elif g.geom_type in ("MultiPolygon", "GeometryCollection"):
+            parts.extend(sub for sub in g.geoms if sub.geom_type == "Polygon")
+    if verbose:
+        print(f"    make_valid: {time.time() - t0:.1f}s, {len(simplified)} -> {len(parts)} parts", flush=True)
+
+    return parts
 
 
 def main() -> None:
@@ -148,7 +205,7 @@ def main() -> None:
     parser.add_argument(
         "--base-boundary",
         default=str(STATIC_DATA_DIR / "sweden_boundary.natural_earth_original.geojson"),
-        help="Original (pre-rebuild) boundary, kept for its big landmass parts -- see LARGE_PART_KM",
+        help="Original (pre-rebuild) boundary -- parts mostly redundant with it are dropped; see _redundant_with_ne",
     )
     args = parser.parse_args()
 
@@ -161,6 +218,7 @@ def main() -> None:
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     if not args.finalize:
+        ne_parts, ne_tree = _load_ne_index(Path(args.base_boundary))
         processed = 0
         for i, tif_path in enumerate(tiles, 1):
             cache_path = cache_dir / f"{tif_path.stem}.json"
@@ -171,7 +229,9 @@ def main() -> None:
                 print(f"Reached --limit {args.limit}, stopping (resume by re-running)", flush=True)
                 break
             t0 = time.time()
-            parts = tile_land_parts(tif_path, args.downsample, args.simplify_deg, verbose=True)
+            parts = tile_land_parts(
+                tif_path, args.downsample, args.simplify_deg, ne_parts=ne_parts, ne_tree=ne_tree, verbose=True
+            )
             elapsed = time.time() - t0
             with open(cache_path, "w", encoding="utf-8") as fh:
                 json.dump([mapping(p) for p in parts], fh)
@@ -196,7 +256,17 @@ def main() -> None:
             base_data = json.load(fh)
         for feat in base_data["features"]:
             geom = shape(feat["geometry"])
-            base_parts.extend(geom.geoms if geom.geom_type == "MultiPolygon" else [geom])
+            raw_base = geom.geoms if geom.geom_type == "MultiPolygon" else [geom]
+            # Same defensive fix as tile_land_parts(): downstream code (e.g.
+            # prepare_cell_geometry.py) builds a plain, non-unioned
+            # MultiPolygon straight out of these parts, which surfaces any
+            # borderline-invalid input as a hard GEOSException instead of
+            # GEOS quietly fixing it as a union side effect.
+            for fixed_geom in shapely.make_valid(np.array(list(raw_base))):
+                if fixed_geom.geom_type == "Polygon":
+                    base_parts.append(fixed_geom)
+                elif fixed_geom.geom_type in ("MultiPolygon", "GeometryCollection"):
+                    base_parts.extend(sub for sub in fixed_geom.geoms if sub.geom_type == "Polygon")
 
     # Downloaded WorldCover tiles are fixed 3x3 degree blocks that extend
     # past SWEDEN_BBOX on every edge (needed so tiles fully cover the bbox
@@ -213,10 +283,10 @@ def main() -> None:
     # can't, e.g. Norway/Finland land inside the bbox rectangle) --
     # BORDER_BUFFER_DEG is deliberately modest (~17km) since Sweden and
     # Denmark are only ~4km apart at the narrowest point of Oresund
-    # (Helsingborg/Helsingor); LARGE_PART_KM already drops any part big
-    # enough to be a real town rather than a genuine skerry, but a small
-    # Danish island close to that strait could otherwise still slip
-    # through on size alone.
+    # (Helsingborg/Helsingor) -- close enough that this buffer alone can't
+    # fully rule out a genuine Danish town leaking in there (verify near
+    # Helsingborg specifically after any rebuild, alongside the archipelago
+    # check this script exists for).
     from config import SWEDEN_BBOX
 
     BORDER_BUFFER_DEG = 0.15
@@ -268,10 +338,10 @@ def main() -> None:
                     "source": (
                         f"Hybrid: original Natural Earth 10m Land + 10m Minor Islands boundary "
                         f"({n_base} landmass parts, kept as-is) UNION ESA WorldCover 10m 2021 v200 "
-                        f"(public domain) small-island parts under {LARGE_PART_KM}km bbox not already "
-                        f"resolved by Natural Earth ({n_small_islands} parts: non-water/non-nodata "
-                        f"classes, max-pooled to {args.downsample * 10}m blocks, simplified at "
-                        f"{args.simplify_deg} deg tolerance) -- see scripts/build_worldcover_boundary.py"
+                        f"(public domain) land parts not overlapping Natural Earth, of any size "
+                        f"({n_small_islands} parts: non-water/non-nodata classes, max-pooled to "
+                        f"{args.downsample * 10}m blocks, simplified at {args.simplify_deg} deg "
+                        f"tolerance) -- see scripts/build_worldcover_boundary.py"
                     ),
                 },
                 "geometry": mapping(national),

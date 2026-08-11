@@ -22,13 +22,14 @@ from __future__ import annotations
 import gzip
 import json
 import math
+import time
 from pathlib import Path
 
+import shapely
 import _pathsetup  # noqa: F401  (sets up sys.path for forecast/src imports)
 from config import GRID_RESOLUTION_KM, SWEDEN_BBOX, STATIC_DATA_DIR
 from grid import load_grid
 from shapely.geometry import box, mapping, shape
-from shapely.ops import unary_union
 from shapely.strtree import STRtree
 
 KM_PER_DEGREE_LAT = 111.32
@@ -111,16 +112,57 @@ def main() -> None:
     # clean boundary.
     LAKE_OVERSHOOT_FRACTION = 0.75
     WIDEN_FACTORS = (1, 1.5, 2, 3)
-    for cell in cells:
+    n_cells = len(cells)
+    run_start = time.time()
+    for cell_i, cell in enumerate(cells, 1):
+        cell_t0 = time.time()
         paintable = None
         first_land_only = None
         for factor in WIDEN_FACTORS:
             square = cell_square(cell.longitude, cell.latitude, GRID_RESOLUTION_KM * factor)
-            nearby_land_idx = land_tree.query(square)
+            # predicate="intersects": STRtree.query() with no predicate only
+            # filters by bounding-box overlap, and the mainland's own part
+            # has a bounding box spanning nearly the whole country -- every
+            # single cell nationally would otherwise pull it into
+            # nearby_land_idx regardless of actual distance. The predicate
+            # makes STRtree do real (still index-accelerated) geometry
+            # intersection tests internally, so only parts genuinely near
+            # this cell's square come back.
+            nearby_land_idx = land_tree.query(square, predicate="intersects")
             if len(nearby_land_idx) == 0:
                 continue
-            nearby_land = unary_union([land_parts[i] for i in nearby_land_idx])
-            land_only = square.intersection(nearby_land)
+            # Intersect the square against each nearby part INDIVIDUALLY and
+            # union the (tiny, square-bounded) results, rather than
+            # combining the raw parts into one MultiPolygon/union first.
+            # Two things were tried and confirmed live to be too slow:
+            #   1. unary_union(raw parts) then intersect: with the denser,
+            #      more fragmented boundary this script now reads (tens of
+            #      thousands of small island parts vs. a few hundred
+            #      before), a dense-skerry cell's nearby_land_idx query can
+            #      pull in enough parts that unary_union() alone exhausted
+            #      the process's memory (GEOSException: bad allocation).
+            #   2. MultiPolygon(raw parts) + make_valid() then intersect:
+            #      avoids the memory blowup, but a single coastal part can
+            #      legitimately be huge (e.g. the Bohuslan archipelago
+            #      mainland chunk WorldCover resolves in far more detail
+            #      than Natural Earth ever did, and isn't >50% redundant
+            #      with it -- see REDUNDANT_OVERLAP_FRACTION in
+            #      build_worldcover_boundary.py, so it's correctly kept in
+            #      full, not simplified away). make_valid()'ing a
+            #      MultiPolygon containing that part -- checking every
+            #      other nearby part against ALL of its vertices for
+            #      self-intersection -- confirmed live to cost ~10s per
+            #      cell, repeated for every one of the many cells near that
+            #      one part, for a part whose vertices mostly aren't even
+            #      inside this cell's tiny square.
+            # Intersecting square-vs-one-valid-part first clips each part
+            # down to (at most) the square's extent before any expensive
+            # work happens, so a huge part's size stops mattering; the
+            # parts don't need validating first since two individually
+            # valid geometries intersecting is always well-defined (the
+            # invalid-combined-MultiPolygon problem only existed because of
+            # combining raw, possibly-overlapping parts before the op).
+            land_only = shapely.unary_union([square.intersection(land_parts[i]) for i in nearby_land_idx])
             if land_only.is_empty:
                 # No real land here yet even at this radius -- the genuine
                 # "thin coastal sliver" case widening exists for. Keep
@@ -129,10 +171,11 @@ def main() -> None:
             first_land_only = land_only
             candidate = land_only
             if lake_tree is not None:
-                nearby_lake_idx = lake_tree.query(square)
+                nearby_lake_idx = lake_tree.query(square, predicate="intersects")
                 if len(nearby_lake_idx) > 0:
-                    nearby_lakes = unary_union([lake_parts[i] for i in nearby_lake_idx])
-                    candidate = candidate.difference(nearby_lakes)
+                    # Same square-first clipping as nearby_land above.
+                    for lake_idx in nearby_lake_idx:
+                        candidate = candidate.difference(lake_parts[lake_idx])
             if not candidate.is_empty and candidate.area >= land_only.area * LAKE_OVERSHOOT_FRACTION:
                 paintable = candidate
                 if factor > 1:
@@ -159,8 +202,23 @@ def main() -> None:
             lake_overridden += 1
         if paintable is None:
             dropped += 1
-            continue
-        features.append({"cell_id": cell.cell_id, "geometry": mapping(paintable)})
+        else:
+            features.append({"cell_id": cell.cell_id, "geometry": mapping(paintable)})
+
+        cell_elapsed = time.time() - cell_t0
+        if cell_elapsed > 1.0:
+            print(
+                f"  slow cell {cell.cell_id} ({cell.longitude:.3f},{cell.latitude:.3f}): "
+                f"{cell_elapsed:.1f}s, {len(nearby_land_idx)} nearby land parts at final factor",
+                flush=True,
+            )
+        if cell_i % 500 == 0 or cell_i == n_cells:
+            elapsed = time.time() - run_start
+            print(
+                f"[{cell_i}/{n_cells}] {elapsed:.0f}s elapsed, "
+                f"{dropped} dropped, {widened} widened, {lake_overridden} lake-overridden",
+                flush=True,
+            )
 
     with gzip.open(out_path, "wt", encoding="utf-8") as fh:
         json.dump(features, fh)
