@@ -16,7 +16,7 @@ import {
 import { useI18n } from "../i18n";
 import type { I18nKey } from "../i18n/types";
 import type { CombinationParams, DailyRecord } from "../types/forecast";
-import { finalRiskForActivity, RISK_CATEGORIES, riskCategory } from "../lib/riskModel";
+import { abundanceBands, abundanceCategory, finalRiskForActivity, RISK_CATEGORIES, riskCategory } from "../lib/riskModel";
 import type { LocationSeries } from "../hooks/useForecastData";
 import { currentDateIso, currentHourBucketLabel, formatStockholmHourShort, formatStockholmWeekday } from "../lib/time";
 
@@ -27,10 +27,10 @@ import { currentDateIso, currentHourBucketLabel, formatStockholmHourShort, forma
 // not the data itself.
 const BAND_OPACITY = 0.12;
 
-function RiskBands() {
+function RiskBands({ bands }: { bands: { min: number; max: number; key: string; color: string }[] }) {
   return (
     <>
-      {RISK_CATEGORIES.map((c) => (
+      {bands.map((c) => (
         <ReferenceArea key={c.key} y1={c.min} y2={c.max} fill={c.color} fillOpacity={BAND_OPACITY} strokeWidth={0} />
       ))}
     </>
@@ -41,15 +41,17 @@ function ChartTooltip({
   active,
   payload,
   t,
+  categoryFor,
 }: {
   active?: boolean;
   payload?: { payload: { displayLabel: string }; value: number }[];
   label?: string;
   t: (key: I18nKey, vars?: Record<string, string | number>) => string;
+  categoryFor: (value: number) => { key: string };
 }) {
   if (!active || !payload || payload.length === 0) return null;
   const value = payload[0].value;
-  const category = riskCategory(value);
+  const category = categoryFor(value);
   return (
     <div className="chart-tooltip">
       <div>{payload[0].payload.displayLabel}</div>
@@ -75,21 +77,35 @@ export function SevenDayChart({
   daily,
   activityMultiplier,
   combination,
+  isAbundanceLayer,
+  abundanceThresholds,
 }: {
   daily: DailyRecord[];
   activityMultiplier: number;
   combination?: CombinationParams;
+  isAbundanceLayer?: boolean;
+  abundanceThresholds?: number[];
 }) {
   const { t, locale } = useI18n();
   const today = currentDateIso();
+  // Myggläge (isAbundanceLayer) plots population_potential directly, matching
+  // what the hero index/map show for that product -- the combined
+  // finalRiskForActivity score used for Myggrisk lives on a much lower scale
+  // (its own 0/4/8/14/22 category bounds vs. abundance's 0/28/38/48/58), so
+  // using it here made the chart read as consistently, misleadingly lower
+  // than the area's actual displayed value.
   const data = daily.map((d, idx) => ({
     idx,
     displayLabel: formatStockholmWeekday(d.date, locale),
     isToday: d.date === today,
-    risk: finalRiskForActivity(d.population_potential, d.biting_activity, d.base_exposure_fraction, activityMultiplier, combination),
+    risk: isAbundanceLayer
+      ? d.population_potential
+      : finalRiskForActivity(d.population_potential, d.biting_activity, d.base_exposure_fraction, activityMultiplier, combination),
   }));
   const { high, low } = findExtremes(data);
   const todayPoint = data.find((d) => d.isToday);
+  const bands = isAbundanceLayer ? abundanceBands(abundanceThresholds) : RISK_CATEGORIES;
+  const categoryFor = isAbundanceLayer ? (v: number) => abundanceCategory(v, abundanceThresholds) : riskCategory;
 
   return (
     <div style={{ width: "100%", height: 190 }}>
@@ -101,11 +117,11 @@ export function SevenDayChart({
               <stop offset="95%" stopColor="#4fae6b" stopOpacity={0.05} />
             </linearGradient>
           </defs>
-          <RiskBands />
+          <RiskBands bands={bands} />
           <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
           <XAxis dataKey="idx" tickFormatter={(idx: number) => data[idx]?.displayLabel ?? ""} tick={{ fontSize: 11 }} />
           <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} width={34} allowDecimals={false} />
-          <Tooltip content={<ChartTooltip t={t} />} />
+          <Tooltip content={<ChartTooltip t={t} categoryFor={categoryFor} />} />
           {todayPoint && (
             <ReferenceLine x={todayPoint.idx} stroke="var(--color-text-muted)" strokeDasharray="3 3">
               <Label value={t("chart.now")} position="insideTopRight" style={{ fontSize: 10, fill: "var(--color-text-muted)" }} />
@@ -132,27 +148,37 @@ export function HourlyChart({
   hourly,
   activityMultiplier,
   combination,
+  isAbundanceLayer,
+  abundanceThresholds,
 }: {
   hourly: LocationSeries["hourly"];
   activityMultiplier: number;
   combination?: CombinationParams;
+  isAbundanceLayer?: boolean;
+  abundanceThresholds?: number[];
 }) {
   const { t, locale } = useI18n();
   const nowLabel = currentHourBucketLabel();
+  // See SevenDayChart above for why isAbundanceLayer switches to plotting
+  // population_potential directly instead of the combined risk score.
   const data = hourly.map((h, idx) => ({
     idx,
     displayLabel: formatStockholmHourShort(h.hourLabel, locale),
     isNow: h.hourLabel === nowLabel,
-    risk: finalRiskForActivity(h.population_potential, h.biting_activity, h.base_exposure_fraction, activityMultiplier, combination),
+    risk: isAbundanceLayer
+      ? h.population_potential
+      : finalRiskForActivity(h.population_potential, h.biting_activity, h.base_exposure_fraction, activityMultiplier, combination),
   }));
   const { high, low } = findExtremes(data);
   const nowPoint = data.find((d) => d.isNow);
+  const bands = isAbundanceLayer ? abundanceBands(abundanceThresholds) : RISK_CATEGORIES;
+  const categoryFor = isAbundanceLayer ? (v: number) => abundanceCategory(v, abundanceThresholds) : riskCategory;
 
   return (
     <div style={{ width: "100%", height: 190 }}>
       <ResponsiveContainer>
         <LineChart data={data} margin={{ top: 6, right: 12, left: -6, bottom: 0 }}>
-          <RiskBands />
+          <RiskBands bands={bands} />
           <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
           <XAxis
             dataKey="idx"
@@ -161,7 +187,7 @@ export function HourlyChart({
             interval={5}
           />
           <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} width={34} allowDecimals={false} />
-          <Tooltip content={<ChartTooltip t={t} />} />
+          <Tooltip content={<ChartTooltip t={t} categoryFor={categoryFor} />} />
           {nowPoint && (
             <ReferenceLine x={nowPoint.idx} stroke="var(--color-text-muted)" strokeDasharray="3 3">
               <Label value={t("chart.now")} position="insideTopRight" style={{ fontSize: 10, fill: "var(--color-text-muted)" }} />

@@ -340,7 +340,13 @@ export function LocationPanel({
               <div>
                 <div className="section-title">{t("panel.next7days")}</div>
                 <Suspense fallback={<ChartSkeleton />}>
-                  <SevenDayChart daily={series.daily} activityMultiplier={activityMultiplier} combination={manifest?.combination} />
+                  <SevenDayChart
+                    daily={series.daily}
+                    activityMultiplier={activityMultiplier}
+                    combination={manifest?.combination}
+                    isAbundanceLayer={isAbundanceLayer}
+                    abundanceThresholds={manifest?.thresholds?.abundance}
+                  />
                 </Suspense>
               </div>
             )}
@@ -349,7 +355,13 @@ export function LocationPanel({
               <div>
                 <div className="section-title">{t("panel.next48h")}</div>
                 <Suspense fallback={<ChartSkeleton />}>
-                  <HourlyChart hourly={series.hourly} activityMultiplier={activityMultiplier} combination={manifest?.combination} />
+                  <HourlyChart
+                    hourly={series.hourly}
+                    activityMultiplier={activityMultiplier}
+                    combination={manifest?.combination}
+                    isAbundanceLayer={isAbundanceLayer}
+                    abundanceThresholds={manifest?.thresholds?.abundance}
+                  />
                 </Suspense>
               </div>
             )}

@@ -138,6 +138,23 @@ export function abundanceCategory(
   return { key, color: CATEGORY_COLORS[key] };
 }
 
+// Band boundaries for abundanceCategory, in the same {min,max,key,color}
+// shape as RISK_CATEGORIES -- lets chart components (RiskCharts.tsx) draw
+// background reference bands for the Myggläge product using its own
+// (much higher) thresholds instead of risk's 0/4/8/14/22 bounds.
+export function abundanceBands(
+  edges: number[] = DEFAULT_ABUNDANCE_THRESHOLDS
+): { min: number; max: number; key: RiskCategoryKey; color: string }[] {
+  const keys: RiskCategoryKey[] = ["very_low", "low", "moderate", "high", "very_high"];
+  const mins = [0, ...edges];
+  return keys.map((key, i) => ({
+    key,
+    min: mins[i],
+    max: i === keys.length - 1 ? 100 : mins[i + 1],
+    color: CATEGORY_COLORS[key],
+  }));
+}
+
 // Continuous 0-100 -> color ramp for the map, matching abundanceCategory's
 // bands (same green -> red progression as RISK_COLOR_STOPS, different
 // value breakpoints) so the map's shading and the legend/panel's category
