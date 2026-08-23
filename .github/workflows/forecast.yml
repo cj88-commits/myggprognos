@@ -74,6 +74,26 @@ jobs:
         if: steps.static-cache.outputs.cache-hit != 'true'
         run: python scripts/prepare_grid.py
 
+      # cell_geometry.json.gz (the frontend's painted land polygons, see
+      # scripts/prepare_cell_geometry.py) is keyed by cell_id to this same
+      # grid -- if grid.json changes (new/renumbered cells, e.g. from a
+      # supplementary-island-cell algorithm change) without this file being
+      # regenerated too, previously-painted cells silently stop matching any
+      # forecast data (rendered as "no data" / near-transparent) while newly
+      # added cells never get painted at all. Confirmed live: exactly this
+      # happened 2026-08-10 to 2026-08-23 (grid.py rewritten, grid.json
+      # regenerated with a different cell count, cell_geometry.json.gz
+      # never re-run to match) and produced visible white gaps on real
+      # coastline/archipelago land. Regenerating whenever the grid itself
+      # changed (same cache-hit signal as the grid step above) keeps the two
+      # permanently in sync without re-running this on every routine
+      # forecast update.
+      - name: Prepare cell geometry (grid changed only)
+        if: steps.static-cache.outputs.cache-hit != 'true'
+        run: |
+          python scripts/prepare_cell_geometry.py
+          cp data/static/cell_geometry.json.gz frontend/public/data/static/cell_geometry.json.gz
+
       - name: Prepare static features (only if missing)
         # cell_features.json is committed (real GIS-derived data) and
         # checked out by actions/checkout above -- this exists purely as a
@@ -160,7 +180,7 @@ jobs:
       - name: Check for changes
         id: changes
         run: |
-          git add data/generated data/static
+          git add data/generated data/static frontend/public/data/static/cell_geometry.json.gz
           if git diff --cached --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
