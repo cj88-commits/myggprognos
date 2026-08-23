@@ -217,6 +217,7 @@ const sv = {
   "sheet.expand": "Visa mer",
   "sheet.collapse": "Visa mindre",
   "sheet.swipeUp": "Svep upp",
+  "sheet.showMap": "Visa kartan",
   "sheet.dragHandleLabel": "Dra för att visa mer eller mindre av prognospanelen",
 
   "panel.reportButton": "Rapportera hur mycket mygg du ser",

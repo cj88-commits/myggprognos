@@ -44,19 +44,27 @@ export function ControlBar({
 
   return (
     <div className="control-bar">
-      <div className="control-group control-group-search">
-        <SearchBox places={places} onSelect={onSearchSelect} />
-      </div>
+      {/* Search + geolocate are strictly map controls -- they select WHERE
+          on the map, not what to show about it -- so they're grouped
+          together and hidden as one unit while the answer sheet is fully
+          expanded (see .map-only-controls in global.css). The settings
+          gear stays reachable even then, since activity/product affect the
+          already-open forecast, not just the map. */}
+      <div className="map-only-controls">
+        <div className="control-group control-group-search">
+          <SearchBox places={places} onSelect={onSearchSelect} />
+        </div>
 
-      <button
-        type="button"
-        className="icon-button"
-        onClick={locate}
-        aria-label={t("controlBar.useMyLocation")}
-        title={geoError ?? t("controlBar.useMyLocation")}
-      >
-        {locating ? "…" : "📍"}
-      </button>
+        <button
+          type="button"
+          className="icon-button"
+          onClick={locate}
+          aria-label={t("controlBar.useMyLocation")}
+          title={geoError ?? t("controlBar.useMyLocation")}
+        >
+          {locating ? "…" : "📍"}
+        </button>
+      </div>
 
       <button
         type="button"

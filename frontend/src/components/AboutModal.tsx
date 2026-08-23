@@ -16,9 +16,15 @@ export function AboutModal({ onClose }: AboutModalProps) {
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal" role="dialog" aria-modal="true" aria-labelledby="about-title">
-        <h2 id="about-title" style={{ marginTop: 0 }}>
-          {t("about.title")}
-        </h2>
+        {/* A visible x in the corner (in addition to the Stäng button
+            further down) means closing never requires scrolling to the
+            bottom first -- both call the same onClose. */}
+        <div className="modal-header">
+          <h2 id="about-title">{t("about.title")}</h2>
+          <button type="button" className="icon-button modal-close" onClick={onClose} aria-label={t("about.close")}>
+            ✕
+          </button>
+        </div>
 
         <div className="field-group">
           <div className="section-title">{t("about.howTitle")}</div>

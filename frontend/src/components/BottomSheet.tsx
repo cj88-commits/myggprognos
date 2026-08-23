@@ -3,10 +3,17 @@ import { useI18n } from "../i18n";
 
 export type SheetState = "closed" | "half" | "full";
 
+// Tapping the handle deepens the sheet one step at a time (closed -> half
+// -> full) except from "full", where it jumps straight back to "closed"
+// rather than the intermediate "half" -- the mobile experience is meant to
+// read as two clear modes (map vs. forecast, see the handle's dynamic
+// label below), so the one obvious way back to the map from a fully
+// expanded forecast should actually show the map again, not another
+// forecast state.
 const NEXT_ON_TAP: Record<SheetState, SheetState> = {
   closed: "half",
   half: "full",
-  full: "half",
+  full: "closed",
 };
 
 const PREV_ON_ESCAPE: Record<SheetState, SheetState> = {
@@ -153,6 +160,11 @@ export function BottomSheet({ state, onStateChange, children }: BottomSheetProps
           {state === "closed" && (
             <span className="bottom-sheet-swipe-hint" aria-hidden="true">
               &#9650; {t("sheet.swipeUp")}
+            </span>
+          )}
+          {state === "full" && (
+            <span className="bottom-sheet-swipe-hint" aria-hidden="true">
+              &#9660; {t("sheet.showMap")}
             </span>
           )}
         </button>

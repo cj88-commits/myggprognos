@@ -121,6 +121,7 @@ const en: Partial<I18nDict> = {
   "sheet.expand": "Show more",
   "sheet.collapse": "Show less",
   "sheet.swipeUp": "Swipe up",
+  "sheet.showMap": "Show map",
   "sheet.dragHandleLabel": "Drag to show more or less of the forecast panel",
 
   "panel.reportButton": "Report how many mosquitoes you see",

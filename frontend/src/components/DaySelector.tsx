@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useI18n } from "../i18n";
 import type { I18nKey } from "../i18n/types";
 import type { CombinationParams, DailyRecord } from "../types/forecast";
@@ -40,6 +41,17 @@ export function DaySelector({
   abundanceThresholds,
 }: DaySelectorProps) {
   const { t, locale } = useI18n();
+  const selectedRef = useRef<HTMLButtonElement | null>(null);
+
+  // Keep the selected day scrolled into view (item 3 of the mobile polish
+  // pass) -- e.g. jumping straight to the last day via URL/share link, or
+  // via the forecast-day cards further down, shouldn't leave the strip
+  // scrolled to a position where the selected chip is off-screen.
+  // `block: "nearest"` keeps this from also nudging the page/sheet's own
+  // vertical scroll position -- only the horizontal strip should move.
+  useEffect(() => {
+    selectedRef.current?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+  }, [date]);
 
   return (
     <div className="day-selector">
@@ -72,6 +84,7 @@ export function DaySelector({
             <button
               key={d}
               type="button"
+              ref={selected ? selectedRef : undefined}
               className="day-chip"
               aria-pressed={selected}
               onClick={() => onDateChange(d)}
