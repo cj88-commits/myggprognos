@@ -7,7 +7,9 @@
 // data, not UI chrome.
 const sv = {
   "app.title": "Myggprognos",
+  "app.tagline": "Se myggrisken idag och kommande veckan.",
   "app.updated": "Uppdaterad {date}",
+  "app.aboutButton": "Om prognosen",
 
   "controlBar.day": "Dag",
   "controlBar.today": "Idag",
@@ -20,6 +22,10 @@ const sv = {
   "controlBar.playPause": "Spela upp/pausa timanimering",
   "controlBar.filters": "Inställningar",
   "controlBar.closeFilters": "Stäng",
+  "controlBar.productSwitchLabel": "Visa",
+  "controlBar.productSwitchHint": "Myggrisk visar bettrisk. Myggläge visar hur mycket mygg som finns i området, oavsett väder just nu.",
+
+  "daySelector.ariaLabel": "Välj prognosdag",
 
   "daypart.morning": "Morgon",
   "daypart.afternoon": "Eftermiddag",
@@ -45,7 +51,7 @@ const sv = {
   "layer.biting_activity": "Myggaktivitet",
   "layer.confidence": "Prognosunderlag",
 
-  "search.placeholder": "Sök ort, kommun eller lat, lon",
+  "search.placeholder": "Sök ort eller kommun",
   "search.ariaLabel": "Sök plats eller koordinater",
   "search.goToCoordinates": "Gå till koordinater {lat}, {lon}",
   "search.onlineUnavailable": "Sökning online är inte tillgänglig; visar bara lokala träffar.",
@@ -108,7 +114,7 @@ const sv = {
   // no equivalent kicker -- "Måttlig myggförekomst" already says what it
   // means in one phrase, so splitting it the same way would add a line
   // without adding clarity.
-  "panel.riskKicker": "Bettrisk idag",
+  "panel.riskKicker": "Bettrisk {day}",
 
   "panel.abundanceHeadline.very_low": "Mycket låg myggförekomst",
   "panel.abundanceHeadline.low": "Låg myggförekomst",
@@ -126,7 +132,7 @@ const sv = {
 
   "panel.risingAfter": "Risken ökar {period}.",
   "panel.peakPeriod": "Högst risk väntas {period}.",
-  "panel.peakAroundTime": "Högst risk idag: omkring kl {time}.",
+  "panel.peakAroundTime": "Högst risk {day}: omkring kl {time}.",
   "panel.whyTitleToday": "Vad påverkar risken idag?",
 
   // "Now vs. later today" (item 7): only shown when the category actually
@@ -158,6 +164,7 @@ const sv = {
 
   "panel.technicalTitle": "Om siffrorna",
   "panel.indexLabel": "Index {value} av 100",
+  "panel.coordinatesLabel": "Plats: {lat}, {lon}",
   "panel.modelDisclaimer":
     "Detta är ett modellberäknat riskindex baserat på väder och naturförhållanden. Det är inte ett uppmätt antal mygg.",
 
@@ -212,8 +219,8 @@ const sv = {
   "sheet.swipeUp": "Svep upp",
   "sheet.dragHandleLabel": "Dra för att visa mer eller mindre av prognospanelen",
 
-  "panel.reportButton": "Rapportera mygg här",
-  "panel.shareButton": "Dela vyn",
+  "panel.reportButton": "Rapportera hur mycket mygg du ser",
+  "panel.shareButton": "Dela prognosen",
   "panel.shareCopied": "Länk kopierad!",
   "panel.offlineDemo":
     "Rapportering körs i offline-demoläge; inskickade rapporter sparas inte förrän Worker-API:et är konfigurerat (se README).",
@@ -263,6 +270,20 @@ const sv = {
   "chart.now": "Nu",
   "chart.high": "Högst",
   "chart.low": "Lägst",
+
+  "about.title": "Om prognosen",
+  "about.howTitle": "Så fungerar prognosen",
+  "about.howBody":
+    "Prognosen kombinerar väderdata och naturförhållanden – till exempel nederbörd, temperatur, vind och närhet till våtmark och vatten – för att uppskatta hur mycket mygg som sannolikt finns och hur aktiva de är, timme för timme och för de kommande sju dagarna.",
+  "about.sourcesTitle": "Datakällor",
+  "about.sourcesBody":
+    "Väderdata hämtas från SMHI:s öppna data. Uppgifter om terräng (skog, våtmark, vatten och höjd) bygger på ESA WorldCover, Naturvårdsverkets nationella marktäckedata (NMD) och höjddata från Copernicus. Platssökning använder en lokal ortförteckning samt OpenStreetMap/Nominatim.",
+  "about.updateTitle": "Uppdatering",
+  "about.updateBody": "Prognosen räknas om automatiskt ungefär var sjätte timme.",
+  "about.limitationsTitle": "Begränsningar",
+  "about.limitationsBody":
+    "Detta är ett modellberäknat riskindex baserat på väder och naturförhållanden. Det är inte ett uppmätt antal mygg, och det är inte ett verktyg för att bedöma risk för myggburen sjukdom.",
+  "about.close": "Stäng",
 
   "loading.map": "Laddar karta…",
   "loading.progress1": "Hämtar prognosdata…",

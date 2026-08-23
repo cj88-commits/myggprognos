@@ -3,6 +3,7 @@ import { ControlBar } from "./components/ControlBar";
 import { Legend } from "./components/Legend";
 import { StatusBanner } from "./components/StatusBanner";
 import { LocationPanel } from "./components/LocationPanel";
+import { AboutModal } from "./components/AboutModal";
 import { BottomSheet, type SheetState } from "./components/BottomSheet";
 import { useCells, useDailyForDate, useLocationSeries, useManifest, usePlaces } from "./hooks/useForecastData";
 import { useI18n } from "./i18n";
@@ -68,6 +69,9 @@ export default function App() {
   // visitor sees the answer immediately without having to discover the
   // sheet exists.
   const [sheetState, setSheetState] = useState<SheetState>("half");
+  // Permanent "Om prognosen" entry (item 4) -- a lightweight modal, opened
+  // from the header, always reachable regardless of what's selected below.
+  const [aboutOpen, setAboutOpen] = useState(false);
 
   const dayOptions = useMemo(() => {
     const start = manifest?.forecast_start ?? new Date().toISOString().slice(0, 10);
@@ -75,8 +79,16 @@ export default function App() {
   }, [manifest?.forecast_start]);
 
   useEffect(() => {
-    if (!date && dayOptions.length > 0) setDate(dayOptions[0]);
-  }, [date, dayOptions]);
+    // Seed from the manifest's own forecast_start, never from dayOptions'
+    // "no manifest yet" fallback (today's real-world date) -- otherwise,
+    // on a slow manifest fetch, `date` locks onto that fallback the first
+    // time this effect runs (its only guard is `!date`) and never gets
+    // corrected once the real forecast_start arrives, silently 404ing
+    // every daily/hourly request for the rest of the session whenever the
+    // forecast's actual start date differs from today (a stale/delayed
+    // pipeline run, or simply a slow first load).
+    if (!date && manifest?.forecast_start) setDate(manifest.forecast_start);
+  }, [date, manifest?.forecast_start]);
 
   const dayIndex = Math.max(0, dayOptions.indexOf(date));
   const isHourlyDay = dayIndex <= 1;
@@ -217,19 +229,29 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <div className="app-title">{t("app.title")}</div>
-        {manifest && (
-          <div style={{ fontSize: "0.72rem", color: "var(--color-text-muted)" }}>
-            {t("app.updated", {
-              date: new Date(manifest.generated_at).toLocaleTimeString(locale === "sv" ? "sv-SE" : undefined, {
-                hour: "2-digit",
-                minute: "2-digit",
-                timeZone: STOCKHOLM_TZ,
-              }),
-            })}
-          </div>
-        )}
+        <div className="app-title-block">
+          <div className="app-title">{t("app.title")}</div>
+          <div className="app-tagline">{t("app.tagline")}</div>
+        </div>
+        <div className="app-header-actions">
+          {manifest && (
+            <div className="app-updated">
+              {t("app.updated", {
+                date: new Date(manifest.generated_at).toLocaleTimeString(locale === "sv" ? "sv-SE" : undefined, {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  timeZone: STOCKHOLM_TZ,
+                }),
+              })}
+            </div>
+          )}
+          <button type="button" className="app-about-button" onClick={() => setAboutOpen(true)}>
+            <span aria-hidden="true">ⓘ</span> {t("app.aboutButton")}
+          </button>
+        </div>
       </header>
+
+      {aboutOpen && <AboutModal onClose={() => setAboutOpen(false)} />}
 
       <div className="map-area">
         <Suspense fallback={<MapSkeleton label={t("loading.map")} />}>
@@ -248,15 +270,13 @@ export default function App() {
         </Suspense>
 
         <ControlBar
-          manifest={manifest}
           places={places ?? []}
-          date={date}
-          onDateChange={setDate}
           activity={activity}
           onActivityChange={setActivity}
           layer={layer}
           onLayerChange={setLayer}
-          onSelectLocation={(lat, lon) => {
+          onSearchSelect={(lat, lon, label) => handleSelectLocation(lat, lon, label)}
+          onLocate={(lat, lon) => {
             setUserLocation({ lat, lon });
             handleSelectLocation(lat, lon, t("search.myLocation"));
           }}
@@ -293,6 +313,8 @@ export default function App() {
           dayIndex={dayIndex}
           daypart={daypart}
           date={date}
+          dayOptions={dayOptions}
+          onDateChange={setDate}
           series={series}
           loading={dailyLoading || seriesLoading}
           error={dailyError || seriesError}

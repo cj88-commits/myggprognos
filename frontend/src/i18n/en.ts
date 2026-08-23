@@ -6,7 +6,9 @@ import type { I18nDict } from "./types";
 // here falls back to the Swedish string (see index.tsx's `t()`).
 const en: Partial<I18nDict> = {
   "app.title": "Mosquito Forecast",
+  "app.tagline": "See today's and this week's mosquito risk.",
   "app.updated": "Updated {date}",
+  "app.aboutButton": "About the forecast",
 
   "controlBar.day": "Day",
   "controlBar.today": "Today",
@@ -18,6 +20,12 @@ const en: Partial<I18nDict> = {
   "controlBar.useMyLocation": "Use my location",
   "controlBar.filters": "Settings",
   "controlBar.closeFilters": "Close",
+  "controlBar.productSwitchLabel": "Show",
+  "controlBar.productSwitchHint": "Mosquito risk shows bite risk. Mosquito outlook shows how many mosquitoes are in the area, regardless of current weather.",
+
+  "daySelector.ariaLabel": "Choose forecast day",
+
+  "search.placeholder": "Search place or municipality",
 
   "layer.daily_peak_risk": "Mosquito risk",
   "layer.current_risk": "Mosquito risk right now",
@@ -69,8 +77,9 @@ const en: Partial<I18nDict> = {
   "panel.whyTitle": "What's affecting the risk right now?",
   "panel.whyTitleToday": "What's affecting today's risk?",
   "panel.whenChangesTitle": "When does it change?",
-  "panel.peakAroundTime": "Highest risk today: around {time}.",
-  "panel.riskKicker": "Bite risk today",
+  "panel.peakAroundTime": "Highest risk {day}: around {time}.",
+  "panel.riskKicker": "Bite risk {day}",
+  "panel.coordinatesLabel": "Location: {lat}, {lon}",
   "panel.nowVsPeak": "{nowCategory} bite risk now – {peakCategory} expected around {time}.",
   "panel.relationship.abundanceHigherThanRisk":
     "There are likely plenty of mosquitoes in the area, but conditions are keeping bite risk down right now.",
@@ -114,12 +123,26 @@ const en: Partial<I18nDict> = {
   "sheet.swipeUp": "Swipe up",
   "sheet.dragHandleLabel": "Drag to show more or less of the forecast panel",
 
-  "panel.reportButton": "Report mosquitoes here",
-  "panel.shareButton": "Share this view",
+  "panel.reportButton": "Report how many mosquitoes you see",
+  "panel.shareButton": "Share the forecast",
   "panel.shareCopied": "Link copied!",
 
   "status.degraded": "Showing degraded-quality forecast data (see manifest warnings).",
   "status.sampleData": "Showing example data for only {count} locations — not full Sweden coverage.",
+
+  "about.title": "About the forecast",
+  "about.howTitle": "How the forecast works",
+  "about.howBody":
+    "The forecast combines weather data and environmental conditions -- rainfall, temperature, wind, and proximity to wetland and water -- to estimate how many mosquitoes are likely present and how active they are, hour by hour and for the coming seven days.",
+  "about.sourcesTitle": "Data sources",
+  "about.sourcesBody":
+    "Weather data comes from SMHI's open data. Terrain information (forest, wetland, water and elevation) is based on ESA WorldCover, the Swedish EPA's national land-cover data (NMD) and Copernicus elevation data. Place search uses a local place index plus OpenStreetMap/Nominatim.",
+  "about.updateTitle": "Updates",
+  "about.updateBody": "The forecast is automatically recalculated roughly every six hours.",
+  "about.limitationsTitle": "Limitations",
+  "about.limitationsBody":
+    "This is a model-calculated risk index based on weather and environmental conditions. It is not a measured mosquito count, and it is not a tool for assessing mosquito-borne disease risk.",
+  "about.close": "Close",
 };
 
 export default en;

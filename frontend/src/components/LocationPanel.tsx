@@ -19,6 +19,7 @@ import { currentDateIso, currentHourBucketLabel, formatStockholmDateLabel, forma
 import { ReportForm } from "./ReportForm";
 import { HourTimeline } from "./HourTimeline";
 import { ForecastCards } from "./ForecastCards";
+import { DaySelector } from "./DaySelector";
 
 // recharts is a sizeable dependency (see vite.config.ts manualChunks) --
 // deferring its import until a chart is actually about to render (rather
@@ -29,6 +30,12 @@ const HourlyChart = lazy(() => import("./RiskCharts").then((m) => ({ default: m.
 
 function ChartSkeleton() {
   return <div className="skeleton skeleton-chart" aria-hidden="true" />;
+}
+
+function addDaysIso(dateIso: string, days: number): string {
+  const d = new Date(dateIso + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
 }
 
 export interface LocationPanelProps {
@@ -46,6 +53,8 @@ export interface LocationPanelProps {
   dayIndex: number;
   daypart: string;
   date: string;
+  dayOptions: string[];
+  onDateChange: (date: string) => void;
   series: LocationSeries | null;
   loading: boolean;
   error: string | null;
@@ -101,6 +110,8 @@ export function LocationPanel({
   isHourlyDay,
   hourLabel,
   date,
+  dayOptions,
+  onDateChange,
   series,
   loading,
   error,
@@ -180,7 +191,18 @@ export function LocationPanel({
   // an hour, since both remaining products always describe the whole day,
   // not a selected moment (see App.tsx).
   const isToday = date === currentDateIso();
-  const timeContext = isToday ? t("controlBar.today") : formatStockholmDateLabel(date, locale);
+  const isTomorrow = date === addDaysIso(currentDateIso(), 1);
+  const timeContext = isToday ? t("controlBar.today") : isTomorrow ? t("controlBar.tomorrow") : formatStockholmDateLabel(date, locale);
+  // Lowercase, mid-sentence form of the same day context -- "bettrisk idag",
+  // "hogst risk imorgon" -- used wherever the day is interpolated into a
+  // sentence rather than standing alone as a label.
+  const dayPhraseLower = isToday || isTomorrow ? timeContext.toLowerCase() : timeContext;
+
+  // Per-day risk category for the new 7-day selector strip (item 2 of the
+  // public-launch UX pass) -- reuses the already-fetched `series.daily`
+  // (same data ForecastCards/SevenDayChart below already use) rather than
+  // fetching anything new.
+  const dailyByDate = series ? new Map(series.daily.map((d) => [d.date, d])) : null;
 
   // "Now vs. later today" (item 7): find the hourly record matching the
   // actual current instant (not a UI hour selector -- that no longer
@@ -224,7 +246,7 @@ export function LocationPanel({
   // time, so showing both would repeat the same "kl X" twice.
   const peakAroundNote =
     isRiskProduct && !nowVsPeakNote && activeDailyRecord?.daily_peak_local_time
-      ? t("panel.peakAroundTime", { time: activeDailyRecord.daily_peak_local_time.slice(0, 2) })
+      ? t("panel.peakAroundTime", { day: dayPhraseLower, time: activeDailyRecord.daily_peak_local_time.slice(0, 2) })
       : null;
 
   // Myggrisk-vs-Myggläge relationship (item 6): the two products can
@@ -250,11 +272,27 @@ export function LocationPanel({
   return (
     <div className="panel-content">
       <div>
-        <div style={{ fontWeight: 700 }}>{placeName}</div>
-        <div style={{ fontSize: "0.78rem", color: "var(--color-text-muted)" }}>
-          {latitude.toFixed(4)}, {longitude.toFixed(4)} &middot; {timeContext}
-        </div>
+        {/* Coordinates deliberately do not appear here (item 3 of the
+            public-launch UX pass): the primary result should read as a
+            consumer forecast, not a GIS readout. They're still available,
+            just relocated into "Tekniska detaljer" below. Myggläge has no
+            hero kicker of its own (see below), so it keeps a plain day
+            label here instead -- Myggrisk's day context lives in the
+            kicker ("Bettrisk idag") instead, to avoid saying it twice. */}
+        <div className="location-name">{placeName}</div>
+        {isAbundanceLayer && <div className="location-subline">{timeContext}</div>}
       </div>
+
+      <DaySelector
+        dayOptions={dayOptions}
+        date={date}
+        onDateChange={onDateChange}
+        dailyByDate={dailyByDate}
+        isAbundanceLayer={isAbundanceLayer}
+        activityMultiplier={activityMultiplier}
+        combination={manifest?.combination}
+        abundanceThresholds={manifest?.thresholds?.abundance}
+      />
 
       {/* Hero: the answer to "will mosquitoes bother me?" first, in plain
           language and large type -- the recommendation sentence is the
@@ -266,7 +304,7 @@ export function LocationPanel({
             the big word below actually means before the user even reads
             it, making the Myggrisk = bettrisk equivalence explicit at the
             very top of the screen rather than something to infer. */}
-        {isRiskProduct && <div className="hero-kicker">{t("panel.riskKicker")}</div>}
+        {isRiskProduct && <div className="hero-kicker">{t("panel.riskKicker", { day: dayPhraseLower })}</div>}
         <div className={`hero-headline${isRiskProduct ? " hero-headline--risk" : ""}`} style={{ color: riskLikeCategory.color }}>
           {isAbundanceLayer ? t(`panel.abundanceHeadline.${riskLikeCategory.key}` as I18nKey) : riskLikeLabel}
         </div>
@@ -374,6 +412,9 @@ export function LocationPanel({
         <div className="disclosure-content technical-section">
           <p className="model-disclaimer">{t("panel.modelDisclaimer")}</p>
 
+          <p className="index-line">
+            {t("panel.coordinatesLabel", { lat: latitude.toFixed(4), lon: longitude.toFixed(4) })}
+          </p>
           <p className="index-line">{t("panel.indexLabel", { value: formatScore(displayValue) })}</p>
 
           {isRiskProduct && (
@@ -413,12 +454,15 @@ export function LocationPanel({
         </div>
       </details>
 
+      {/* Sharing is the everyday consumer action; contributing a report is a
+          more specialised secondary one (item 5 of the public-launch UX
+          pass) -- share leads, both visually and in DOM order. */}
       <div className="button-row">
-        <button type="button" className="button primary" onClick={() => setReportOpen(true)}>
-          {t("panel.reportButton")}
-        </button>
-        <button type="button" className="button" onClick={onShare}>
+        <button type="button" className="button primary" onClick={onShare}>
           {shareCopied ? t("panel.shareCopied") : t("panel.shareButton")}
+        </button>
+        <button type="button" className="button" onClick={() => setReportOpen(true)}>
+          {t("panel.reportButton")}
         </button>
       </div>
 

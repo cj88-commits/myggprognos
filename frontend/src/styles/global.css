@@ -90,9 +90,60 @@ a {
   z-index: 20;
 }
 
+.app-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
 .app-title {
   font-weight: 700;
   font-size: 1.1rem;
+}
+
+/* "Se myggrisken idag och kommande veckan." (item 1) -- the short
+   explanation the opening state should lead with, right under the site
+   name. Hidden on narrow viewports (see the mobile block below) to keep
+   the header compact there; the hero answer inside the panel/sheet already
+   carries the same job on mobile. */
+.app-tagline {
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.app-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: 0 0 auto;
+}
+
+.app-updated {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+/* Permanent "Om prognosen" entry (item 4) -- always reachable from the
+   header, regardless of what's selected below. */
+.app-about-button {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+  min-height: 36px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.app-about-button:hover {
+  border-color: var(--color-accent);
 }
 
 .map-area {
@@ -160,6 +211,13 @@ a {
   .app-title {
     font-size: 1rem;
   }
+  .app-tagline,
+  .app-updated {
+    display: none;
+  }
+  .app-about-button {
+    padding: 0.35rem 0.55rem;
+  }
   .hero-headline {
     font-size: 1.4rem;
   }
@@ -192,23 +250,11 @@ a {
   pointer-events: auto;
 }
 
-/* Desktop: "Instellningar" collapses only activity profile + map view
-   (advanced settings) behind this toggle, same as before -- every other
-   control (search, locate-me, product switch, day, hour/daypart) stays
-   inline via .control-bar-inline (display:contents below, so those
-   controls are ordinary flex items of .control-bar on desktop).
-   Mobile: the map had too many always-visible buttons to pan/zoom
-   reliably (confirmed on a real phone), so this same toggle instead opens
-   ALL controls as one bottom sheet -- .control-bar-inline is hidden and
-   .control-bar-sheet-only (a second copy of the same controls) is shown
-   inside .filters-panel instead. See the @media (max-width: 860px) blocks
-   below for exactly which controls live where per breakpoint. */
-.control-bar-inline {
-  display: contents;
-}
-.control-bar-sheet-only {
-  display: none;
-}
+/* Only search + geolocate stay inline on every breakpoint now (item 1):
+   which day (see .day-selector, inside the answer panel) and which
+   product/activity (below, inside .filters-panel) no longer need a
+   duplicate-per-breakpoint rendering trick, since neither is a map-area
+   control that has to fit next to the zoom buttons. */
 .filters-toggle-icon {
   display: none;
 }
@@ -297,19 +343,9 @@ a {
    every mobile filters-* override in one block placed after its
    defaults avoids reintroducing that bug here. */
 @media (max-width: 860px) {
-  /* The always-visible mobile toolbar is now just search + this one icon
-     button -- everything else moves into the sheet below. */
-  .control-bar-inline {
-    display: none;
-  }
-  .control-bar-sheet-only {
-    display: flex;
-    flex-direction: column;
-    gap: 0.6rem;
-  }
-  .control-bar-sheet-only .product-switch {
-    flex-wrap: wrap;
-  }
+  /* The always-visible mobile toolbar is now just search + locate-me +
+     this one icon button -- product/activity settings move into the sheet
+     below. */
   .filters-toggle {
     display: flex;
     width: 44px;
@@ -531,6 +567,22 @@ a {
   padding: 0.35rem 0.65rem;
   font-size: 0.8rem;
   min-height: 44px;
+}
+
+/* Settings-panel wrapper around the demoted Myggrisk/Myggläge switch (item
+   1) -- unlike the other .control-group boxes (a single label+input pair),
+   this one stacks a label, the two option chips, and an explanatory hint. */
+.control-group.product-switch-group {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.45rem;
+}
+
+.filters-hint {
+  margin: 0;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  color: var(--color-text-muted);
 }
 
 .control-group label {
@@ -784,6 +836,73 @@ a {
   padding: 2rem 1rem;
   color: var(--color-text-muted);
   text-align: center;
+}
+
+/* Place name (item 3): the primary result should read as a consumer
+   forecast, not a GIS readout -- coordinates no longer compete with it up
+   here, see .index-line inside .technical-section for where they moved. */
+.location-name {
+  font-weight: 700;
+  font-size: 1.15rem;
+}
+
+.location-subline {
+  margin-top: 0.15rem;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+/* 7-day forecast selector (item 2): a horizontal, always-visible strip
+   replacing the old single date <select> -- scrolls on narrow viewports
+   rather than wrapping or hiding days behind a dropdown. */
+.day-selector-scroll {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 0.2rem;
+  margin: 0 -0.1rem;
+}
+
+.day-chip {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 52px;
+  min-height: 48px;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-alt);
+  border-radius: var(--radius);
+}
+
+.day-chip[aria-pressed="true"] {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.day-chip-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.day-chip[aria-pressed="true"] .day-chip-label {
+  color: var(--color-accent-contrast);
+}
+
+.day-chip-category {
+  font-size: 0.66rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Selected day: readable against the accent background regardless of the
+   category's own color (which would otherwise clash with it). */
+.day-chip[aria-pressed="true"] .day-chip-category {
+  color: var(--color-accent-contrast) !important;
 }
 
 /* Hero: plain-language headline first (item 2) -- "Mycket låg risk just nu"
