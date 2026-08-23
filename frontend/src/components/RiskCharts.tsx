@@ -73,18 +73,26 @@ function findExtremes<T extends { risk: number }>(data: T[]): { high: T | null; 
   return { high, low };
 }
 
-// Both products are nominally 0-100 scores, but Myggrisk's real values
-// rarely clear ~35 (category bounds are 0/4/8/14/22 -- see
+// Both products are nominally 0-100 scores, but real values rarely clear
+// ~35 (Myggrisk's category bounds are 0/4/8/14/22 -- see
 // riskModel.ts::RISK_CATEGORIES, confirmed against the live dataset in
 // data/generated/diagnostics/national-diagnostics.json: p90 ~14, max ~34).
-// A fixed 0-100 y-axis squashed every Myggrisk line into the bottom third
-// of the chart, reading as "too low" even at "very high". Scale the axis
-// to the data (and to the top band's floor, so the highest category is
-// still reachable on-chart even on a quiet week) instead of hardcoding 100.
+// A fixed 0-100 y-axis squashed every line into the bottom third of the
+// chart, reading as "too low" even at "very high".
+//
+// The axis top is derived from the top category band's floor (doubled, for
+// headroom into "very high"), NOT from this chart's own data -- deliberately,
+// so the ceiling is the same for every cell/date on a given manifest instead
+// of jumping around per location (a cell at 14 got a ~25 ceiling, a
+// different cell at 30 would have gotten ~50, making "high" look
+// inconsistently tall/short depending purely on which place you clicked, and
+// making a borderline-high value look unimpressive on its own thin axis).
+// `dataMax` only widens the ceiling further, as a safety net against actual
+// values ever exceeding it (never as the primary driver).
 function computeYMax(data: { risk: number }[], bands: { max: number }[]): number {
   const dataMax = Math.max(0, ...data.map((d) => d.risk));
   const topBandFloor = bands.length > 1 ? bands[bands.length - 2].max : 0;
-  const target = Math.max(dataMax * 1.15, topBandFloor * 1.1);
+  const target = Math.max(topBandFloor * 2, dataMax * 1.1);
   return Math.max(10, Math.ceil(target / 5) * 5);
 }
 
