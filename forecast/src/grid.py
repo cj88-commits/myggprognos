@@ -320,6 +320,28 @@ def _supplementary_island_cells(
         candidate_lons = lon_flat[inside]
         candidate_lats = lat_flat[inside]
 
+        # The main lattice loop only ever considers points inside
+        # SWEDEN_BBOX (_in_sweden_bbox); this one didn't apply the same
+        # filter, and the raster-derived boundary source turns out to
+        # include some geometry beyond it -- confirmed live: part 3446
+        # (a real connected piece touching the western coast) spans
+        # longitude 9.0-12.0, west of SWEDEN_BBOX's min_lon=10.9, and
+        # produced a cell at 9.01 that output.py's bounds validation
+        # correctly rejected. This never surfaced before because
+        # _supplementary_island_cells never finished running against this
+        # boundary source until the perf fix above. Whatever that western
+        # sliver actually is (misclassified neighboring territory, a
+        # coastline-tracing artifact -- Sweden's real land doesn't reach
+        # that far west here), it isn't a cell this pipeline should emit.
+        in_bbox = (
+            (candidate_lons >= SWEDEN_BBOX["min_lon"])
+            & (candidate_lons <= SWEDEN_BBOX["max_lon"])
+            & (candidate_lats >= SWEDEN_BBOX["min_lat"])
+            & (candidate_lats <= SWEDEN_BBOX["max_lat"])
+        )
+        candidate_lons = candidate_lons[in_bbox]
+        candidate_lats = candidate_lats[in_bbox]
+
         # For a part whose bbox has room for a real interior (more than
         # fringe_deg from its own boundary everywhere), restrict to the
         # coastal fringe -- interior points are already covered by the main
@@ -377,7 +399,11 @@ def _supplementary_island_cells(
             # (guaranteed inside the polygon, unlike a plain centroid, which
             # can fall outside for concave/crescent shapes).
             rep = part.representative_point()
-            if min_dist_km(rep.x, rep.y, lon_scale) > threshold_km:
+            rep_in_bbox = (
+                SWEDEN_BBOX["min_lon"] <= rep.x <= SWEDEN_BBOX["max_lon"]
+                and SWEDEN_BBOX["min_lat"] <= rep.y <= SWEDEN_BBOX["max_lat"]
+            )
+            if rep_in_bbox and min_dist_km(rep.x, rep.y, lon_scale) > threshold_km:
                 extra.append(
                     GridCell(
                         cell_id=f"SE_ISLE_{i:04d}_000",
