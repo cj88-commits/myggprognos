@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-08-23T12:40:46Z",
+  "generated_at": "2026-08-23T19:59:11Z",
   "model_version": "0.3.0",
-  "build_sha": "69e8c7a1ad5e42e2ccfcba856b77a63b5f644bed",
+  "build_sha": "b8c4bbe449e514a2832ffe937b43340f51e9015a",
   "forecast_start": "2026-08-23",
   "forecast_end": "2026-08-29",
-  "hourly_until": "2026-08-25T12:00:00Z",
-  "cell_count": 28455,
+  "hourly_until": "2026-08-25T19:00:00Z",
+  "cell_count": 25350,
   "data_quality": "degraded",
   "daily_files": [
     "daily/2026-08-23.json.gz",
@@ -17,13 +17,6 @@
     "daily/2026-08-29.json.gz"
   ],
   "hourly_files": [
-    "hourly/2026-08-23T12.json.gz",
-    "hourly/2026-08-23T13.json.gz",
-    "hourly/2026-08-23T14.json.gz",
-    "hourly/2026-08-23T15.json.gz",
-    "hourly/2026-08-23T16.json.gz",
-    "hourly/2026-08-23T17.json.gz",
-    "hourly/2026-08-23T18.json.gz",
     "hourly/2026-08-23T19.json.gz",
     "hourly/2026-08-23T20.json.gz",
     "hourly/2026-08-23T21.json.gz",
@@ -65,7 +58,14 @@
     "hourly/2026-08-25T09.json.gz",
     "hourly/2026-08-25T10.json.gz",
     "hourly/2026-08-25T11.json.gz",
-    "hourly/2026-08-25T12.json.gz"
+    "hourly/2026-08-25T12.json.gz",
+    "hourly/2026-08-25T13.json.gz",
+    "hourly/2026-08-25T14.json.gz",
+    "hourly/2026-08-25T15.json.gz",
+    "hourly/2026-08-25T16.json.gz",
+    "hourly/2026-08-25T17.json.gz",
+    "hourly/2026-08-25T18.json.gz",
+    "hourly/2026-08-25T19.json.gz"
   ],
   "activities": {
     "general": 1.0,
@@ -77,7 +77,7 @@
     "outdoor_dining": 1.1
   },
   "warnings": [
-    "10191/37048 cells (28%) are using placeholder static features, not real GIS data -- check cell_features.json coverage and raster tile downloads."
+    "7086/33943 cells (21%) are using placeholder static features, not real GIS data -- check cell_features.json coverage and raster tile downloads."
   ],
   "series_files": [
     "series/0.json.gz",
