@@ -15,10 +15,14 @@ __pycache__/
 venv/
 
 # Forecast pipeline caches / generated static features (regenerable; see
-# scripts/prepare_grid.py, scripts/prepare_static_features.py).
+# scripts/prepare_grid.py, scripts/prepare_static_features.py). grid.json
+# is derived from sweden_boundary.geojson (committed) + config.py and
+# cached by forecast.yml via actions/cache, not git -- so it stays out of
+# the repo.
 data/cache/
 data/static/*.tif
 data/static/*.gpkg
+data/static/grid.json
 
 # Real GIS source tiles for static feature computation (scripts/
 # download_static_gis_data.py) -- several GB of ESA WorldCover + Copernicus
