@@ -290,17 +290,20 @@ def main() -> None:
     from config import SWEDEN_BBOX
 
     BORDER_BUFFER_DEG = 0.15
+    sweden_buffer_raw = None
     sweden_shape_prepared = None
     if base_parts:
         from shapely.prepared import prep
 
+        sweden_buffer_raw = MultiPolygon(base_parts).buffer(BORDER_BUFFER_DEG)
         # prep() so the ~83k .intersects() calls below are STRtree-indexed
         # instead of unindexed O(parts) checks against the buffered shape.
-        sweden_shape_prepared = prep(MultiPolygon(base_parts).buffer(BORDER_BUFFER_DEG))
+        sweden_shape_prepared = prep(sweden_buffer_raw)
 
     kept = []
     n_dropped_bbox = 0
     n_dropped_border = 0
+    n_clipped = 0
     for p in small_parts:
         minx, miny, maxx, maxy = p.bounds
         if maxx < SWEDEN_BBOX["min_lon"] or minx > SWEDEN_BBOX["max_lon"] or maxy < SWEDEN_BBOX["min_lat"] or miny > SWEDEN_BBOX["max_lat"]:
@@ -309,12 +312,41 @@ def main() -> None:
         if sweden_shape_prepared is not None and not sweden_shape_prepared.intersects(p):
             n_dropped_border += 1
             continue
+        # A raw WorldCover tile is a fixed 3x3deg block -- for a part whose
+        # bbox merely BRUSHES the border buffer at one corner while the bulk
+        # of it extends well beyond, keeping `p` whole (the previous
+        # behaviour: any .intersects() -> keep the entire part) let entire
+        # neighbouring-country regions through. Confirmed live: part 15989
+        # (bounds 24-27E, 63-66N) touched the buffer near Haparanda at its
+        # NW corner and was kept in full, adding ~130 grid cells ~300km
+        # away in central Finland once the (now-fixed) supplementary-cell
+        # generator got fast/thorough enough to actually probe that far
+        # corner of such a large part -- 7 parts total this way, ~3,200
+        # cells combined, none of it visible with the old, slower generator
+        # that never fully processed them. Clipping to the buffered Sweden
+        # shape keeps only the genuinely-close-to-the-border portion (a
+        # normal small island entirely inside the buffer is unaffected --
+        # intersection() with a shape that fully contains it returns itself
+        # unchanged) instead of an all-or-nothing keep/drop per part.
+        if sweden_buffer_raw is not None:
+            clipped = p.intersection(sweden_buffer_raw)
+            if clipped.is_empty:
+                n_dropped_border += 1
+                continue
+            if clipped.area < p.area:
+                n_clipped += 1
+            if clipped.geom_type == "Polygon":
+                kept.append(clipped)
+            elif clipped.geom_type in ("MultiPolygon", "GeometryCollection"):
+                kept.extend(g for g in clipped.geoms if g.geom_type == "Polygon")
+            continue
         kept.append(p)
     small_parts = kept
     n_small_islands = len(small_parts)
     print(
         f"{n_small_raw} raw small-island parts -> {n_dropped_bbox} outside SWEDEN_BBOX, "
-        f"{n_dropped_border} outside {BORDER_BUFFER_DEG}deg border buffer, {n_small_islands} kept",
+        f"{n_dropped_border} outside {BORDER_BUFFER_DEG}deg border buffer, "
+        f"{n_clipped} straddling parts clipped to the buffer, {n_small_islands} kept",
         flush=True,
     )
 
