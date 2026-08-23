@@ -54,14 +54,17 @@ def _in_sweden_bbox(lat: float, lon: float) -> bool:
     )
 
 
-def _load_boundary_polygon():
+def _load_boundary_polygon(boundary_path: Path | None = None):
     """Return a shapely polygon/multipolygon for Sweden if a boundary file is
     present under data/static, else None. Uses shapely directly (already a
     hard dependency, see forecast/requirements.txt) rather than geopandas,
     so real land/ocean filtering doesn't need the heavier optional GIS
     extras -- just a plain GeoJSON FeatureCollection with one Sweden
-    MultiPolygon feature (mainland + islands, incl. Gotland/Oland)."""
-    boundary_path = Path(__file__).resolve().parents[2] / "data" / "static" / "sweden_boundary.geojson"
+    MultiPolygon feature (mainland + islands, incl. Gotland/Oland).
+
+    `boundary_path` lets a caller point at an alternate boundary file (e.g. a
+    small local sample being iterated on) instead of the production one."""
+    boundary_path = boundary_path or (Path(__file__).resolve().parents[2] / "data" / "static" / "sweden_boundary.geojson")
     if not boundary_path.exists():
         return None
     try:
@@ -98,16 +101,22 @@ def generate_grid(
     resolution_km: float = 5.0,
     bbox: dict | None = None,
     max_cells: int | None = None,
+    boundary_path: Path | None = None,
 ) -> list[GridCell]:
     """Generate a regular lat/lon grid at approximately `resolution_km`
     spacing, filtered to Sweden's bounding box (and, if available, a real
     boundary polygon).
 
     `max_cells` is a safety valve for tests/sample mode so a mis-set
-    resolution can't accidentally generate millions of cells.
+    resolution can't accidentally generate millions of cells. `boundary_path`
+    overrides which boundary file to load (e.g. a small local sample being
+    iterated on) -- also passed through to `_supplementary_island_cells` as
+    the bbox it filters candidate points against, so a caller supplying both
+    `bbox` and `boundary_path` gets the whole pipeline (main lattice +
+    supplementary cells) scoped to that area instead of all of Sweden.
     """
     bbox = bbox or SWEDEN_BBOX
-    loaded = _load_boundary_polygon()
+    loaded = _load_boundary_polygon(boundary_path)
     boundary_prepared, boundary_raw = loaded if loaded is not None else (None, None)
 
     lat_step = resolution_km / KM_PER_DEGREE_LAT
@@ -148,13 +157,17 @@ def generate_grid(
         row += 1
 
     if boundary_raw is not None and (max_cells is None or len(cells) < max_cells):
-        cells.extend(_supplementary_island_cells(cells, boundary_raw, max_cells))
+        cells.extend(_supplementary_island_cells(cells, boundary_raw, max_cells, bbox_override=bbox))
 
     return cells
 
 
 def _supplementary_island_cells(
-    cells: list[GridCell], boundary, max_cells: int | None, resolution_km: float = 5.0
+    cells: list[GridCell],
+    boundary,
+    max_cells: int | None,
+    resolution_km: float = 5.0,
+    bbox_override: dict | None = None,
 ) -> list[GridCell]:
     """Add extra cells wherever real land (per `boundary`) sits too far
     from every existing point to ever be reached by that point's own
@@ -198,6 +211,8 @@ def _supplementary_island_cells(
         import numpy as np
     except ImportError:
         return []
+
+    bbox = bbox_override or SWEDEN_BBOX
 
     if boundary.geom_type == "Polygon":
         parts = [boundary]
@@ -334,10 +349,10 @@ def _supplementary_island_cells(
         # coastline-tracing artifact -- Sweden's real land doesn't reach
         # that far west here), it isn't a cell this pipeline should emit.
         in_bbox = (
-            (candidate_lons >= SWEDEN_BBOX["min_lon"])
-            & (candidate_lons <= SWEDEN_BBOX["max_lon"])
-            & (candidate_lats >= SWEDEN_BBOX["min_lat"])
-            & (candidate_lats <= SWEDEN_BBOX["max_lat"])
+            (candidate_lons >= bbox["min_lon"])
+            & (candidate_lons <= bbox["max_lon"])
+            & (candidate_lats >= bbox["min_lat"])
+            & (candidate_lats <= bbox["max_lat"])
         )
         candidate_lons = candidate_lons[in_bbox]
         candidate_lats = candidate_lats[in_bbox]
@@ -400,8 +415,8 @@ def _supplementary_island_cells(
             # can fall outside for concave/crescent shapes).
             rep = part.representative_point()
             rep_in_bbox = (
-                SWEDEN_BBOX["min_lon"] <= rep.x <= SWEDEN_BBOX["max_lon"]
-                and SWEDEN_BBOX["min_lat"] <= rep.y <= SWEDEN_BBOX["max_lat"]
+                bbox["min_lon"] <= rep.x <= bbox["max_lon"]
+                and bbox["min_lat"] <= rep.y <= bbox["max_lat"]
             )
             if rep_in_bbox and min_dist_km(rep.x, rep.y, lon_scale) > threshold_km:
                 extra.append(

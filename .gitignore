@@ -29,6 +29,11 @@ data/static/worldcover/
 data/static/dem/
 data/static/cell_features.json.placeholder_backup
 
+# OSM land-polygons dataset (scripts/build_osm_land_supplement.py) -- a
+# ~925MB global download (osmdata.openstreetmap.de), free to re-download,
+# not sensible to commit.
+data/static/osm_land/
+
 # NMD2023 base layer raster (scripts/download_nmd_data.py) -- ~10.85GB
 # single national GeoTIFF, free CC0 re-download, not sensible to commit.
 data/static/nmd/

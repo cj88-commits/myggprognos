@@ -19,6 +19,7 @@ Usage:
 """
 from __future__ import annotations
 
+import argparse
 import gzip
 import json
 import math
@@ -60,10 +61,30 @@ def load_parts(path: Path) -> list:
 
 
 def main() -> None:
-    grid_path = STATIC_DATA_DIR / "grid.json"
-    boundary_path = STATIC_DATA_DIR / "sweden_boundary.geojson"
-    lakes_path = STATIC_DATA_DIR / "sweden_lakes.geojson"
-    out_path = STATIC_DATA_DIR / "cell_geometry.json.gz"
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--grid-path", default=None,
+        help="Override data/static/grid.json (e.g. a small local sample grid).",
+    )
+    parser.add_argument(
+        "--boundary-path", default=None,
+        help="Override data/static/sweden_boundary.geojson (e.g. a small local sample boundary).",
+    )
+    parser.add_argument(
+        "--lakes-path", default=None,
+        help="Override data/static/sweden_lakes.geojson.",
+    )
+    parser.add_argument(
+        "--out", default=None,
+        help="Override data/static/cell_geometry.json.gz -- use this for any sample/test run "
+             "so the real, committed painted layer is never overwritten by mistake.",
+    )
+    args = parser.parse_args()
+
+    grid_path = Path(args.grid_path) if args.grid_path else STATIC_DATA_DIR / "grid.json"
+    boundary_path = Path(args.boundary_path) if args.boundary_path else STATIC_DATA_DIR / "sweden_boundary.geojson"
+    lakes_path = Path(args.lakes_path) if args.lakes_path else STATIC_DATA_DIR / "sweden_lakes.geojson"
+    out_path = Path(args.out) if args.out else STATIC_DATA_DIR / "cell_geometry.json.gz"
 
     cells = load_grid(grid_path)
     land_parts = load_parts(boundary_path)
