@@ -194,7 +194,7 @@ def _supplementary_island_cells(
     added so far) is farther away than that.
     """
     try:
-        from shapely.geometry import Point
+        import shapely
         import numpy as np
     except ImportError:
         return []
@@ -292,97 +292,103 @@ def _supplementary_island_cells(
         placed[placed_n] = (lon, lat)
         placed_n += 1
 
-    def _polygon_pieces(geom) -> list:
-        """Flatten a Polygon/MultiPolygon/GeometryCollection (the latter
-        can come out of a difference() near self-intersections) down to
-        its individual Polygon pieces, dropping any stray lines/points."""
-        if geom.is_empty:
-            return []
-        if geom.geom_type == "Polygon":
-            return [geom]
-        if geom.geom_type in ("MultiPolygon", "GeometryCollection"):
-            pieces: list = []
-            for sub in geom.geoms:
-                pieces.extend(_polygon_pieces(sub))
-            return pieces
-        return []
-
     extra: list[GridCell] = []
     for i, part in enumerate(parts):
+        minx, miny, maxx, maxy = part.bounds
+        mid_lat = (miny + maxy) / 2
+        lon_scale = math.cos(math.radians(mid_lat))
+        lat_step = PROBE_KM / KM_PER_DEGREE_LAT
+        lon_step = PROBE_KM / _km_per_degree_lon(mid_lat)
+
         # A raster-derived boundary (see scripts/build_worldcover_boundary.py)
         # can produce tens of thousands of parts, most of them lone skerries
-        # far smaller than the fringe width -- part.buffer(-fringe_deg) is
-        # guaranteed empty for any part whose bounding box doesn't have room
-        # for a fringe_deg inward erosion on both axes, so skip the (still
-        # real, if fast per-call) buffer() cost entirely for those and go
-        # straight to "whole part is the fringe", same end result.
-        minx, miny, maxx, maxy = part.bounds
-        if (maxx - minx) < 2 * fringe_deg and (maxy - miny) < 2 * fringe_deg:
-            fringe = part
-        else:
-            interior = part.buffer(-fringe_deg)
-            fringe = part.difference(interior) if not interior.is_empty else part
-        # A part's fringe is frequently itself disconnected -- e.g. the
-        # mainland's coastal band, intersected with a genuinely
-        # fragmented stretch of coast (Bohuslan, the outer archipelago),
-        # splits into many separate small pieces, each really its own
-        # lone skerry. Probing the fringe as ONE region with a single
-        # fixed-phase grid (the previous version of this function) can
-        # straddle-miss any piece narrower than the probe spacing --
-        # confirmed live: real land 1-1.2km from two separate reported
-        # gaps, inside the mainland's fringe, got zero probe hits despite
-        # PROBE_KM being well under that. Processing each connected piece
-        # separately, with its own guaranteed representative_point()
-        # fallback (the same safety net the original per-part version of
-        # this function relied on), removes that phase-alignment risk.
-        for j, piece in enumerate(_polygon_pieces(fringe)):
-            piece_minx, piece_miny, piece_maxx, piece_maxy = piece.bounds
-            piece_mid_lat = (piece_miny + piece_maxy) / 2
-            piece_lon_scale = math.cos(math.radians(piece_mid_lat))
-            lat_step = PROBE_KM / KM_PER_DEGREE_LAT
-            lon_step = PROBE_KM / _km_per_degree_lon(piece_mid_lat)
+        # far smaller than the fringe width -- and the mainland's own bbox is
+        # ~the whole country, so probing every part's *entire* bbox at fine
+        # resolution would mean ~2.9M candidate points just for that one
+        # part. shapely.contains_xy batches the containment test into one
+        # vectorized call in C rather than a Python-level loop constructing
+        # one Point() at a time (confirmed live: a 15k-point piece went from
+        # ~10s to ~4ms), which is what makes probing the full bbox for every
+        # part -- big or small -- fast enough to not need a separate
+        # small-part fast path any more.
+        lons = np.arange(minx, maxx + lon_step, lon_step)
+        lats = np.arange(miny, maxy + lat_step, lat_step)
+        lon_grid, lat_grid = np.meshgrid(lons, lats)
+        lon_flat = lon_grid.ravel()
+        lat_flat = lat_grid.ravel()
+        inside = shapely.contains_xy(part, lon_flat, lat_flat)
+        candidate_lons = lon_flat[inside]
+        candidate_lats = lat_flat[inside]
 
-            piece_added = 0
-            lat = piece_miny
-            while lat <= piece_maxy:
-                lon = piece_minx
-                while lon <= piece_maxx:
-                    if piece.contains(Point(lon, lat)) and min_dist_km(lon, lat, piece_lon_scale) > threshold_km:
-                        extra.append(
-                            GridCell(
-                                cell_id=f"SE_ISLE_{i:04d}_{j:04d}_{piece_added:03d}",
-                                latitude=round(lat, 5),
-                                longitude=round(lon, 5),
-                                region=_approx_region(lat),
-                            )
-                        )
-                        piece_added += 1
-                        add_placed(lon, lat)
-                        if max_cells is not None and len(cells) + len(extra) >= max_cells:
-                            return extra
-                    lon += lon_step
-                lat += lat_step
+        # For a part whose bbox has room for a real interior (more than
+        # fringe_deg from its own boundary everywhere), restrict to the
+        # coastal fringe -- interior points are already covered by the main
+        # lattice, and for the mainland skipping this would blow up the
+        # (inherently sequential, since it's a greedy nearest-existing-point
+        # check) loop below from ~140k candidates to ~1.3M.
+        #
+        # This used to be computed by eroding the polygon with
+        # part.buffer(-fringe_deg) and differencing it back out -- correct,
+        # but confirmed live to take 10s+ (once even 35s) on some real parts
+        # from this boundary source regardless of vertex count, including
+        # cases where the erosion turns out empty (i.e. the whole part is
+        # fringe) so the expensive buffer() bought nothing. GEOS's negative
+        # buffer is known to be pathological once the erosion distance
+        # approaches or exceeds a shape's own width -- exactly the "erodes
+        # to empty" case that's common here, since a coastline this
+        # convoluted rarely has 15km+ of clearance everywhere. Testing
+        # "within fringe_deg of the boundary" directly via shapely.dwithin
+        # against part.boundary (a LineString -- no erosion, no self-
+        # intersection handling, GEOS builds a spatial index for it once
+        # and reuses it across the whole batch) answers the same question
+        # without ever calling buffer(): confirmed live, the worst single
+        # part (the mainland, 1.27M interior candidates) took 35s this way
+        # vs. not finishing at all with the old approach.
+        if (maxx - minx) >= 2 * fringe_deg or (maxy - miny) >= 2 * fringe_deg:
+            candidate_points = shapely.points(candidate_lons, candidate_lats)
+            near_boundary = shapely.dwithin(part.boundary, candidate_points, fringe_deg)
+            candidate_lons = candidate_lons[near_boundary]
+            candidate_lats = candidate_lats[near_boundary]
 
-            if piece_added == 0:
-                # Sub-probe-resolution piece (smaller than PROBE_KM in
-                # some direction, or just unlucky with the grid's phase)
-                # -- guarantee it still gets *some* cell via its
-                # representative_point() (guaranteed inside the polygon,
-                # unlike a plain centroid, which can fall outside for
-                # concave/crescent shapes).
-                rep = piece.representative_point()
-                if min_dist_km(rep.x, rep.y, piece_lon_scale) > threshold_km:
-                    extra.append(
-                        GridCell(
-                            cell_id=f"SE_ISLE_{i:04d}_{j:04d}_000",
-                            latitude=round(rep.y, 5),
-                            longitude=round(rep.x, 5),
-                            region=_approx_region(rep.y),
-                        )
+        added = 0
+        for lon, lat in zip(candidate_lons, candidate_lats):
+            # GridCell/json.dump need plain Python floats, not numpy
+            # scalars (what a numpy array yields on iteration).
+            lon = float(lon)
+            lat = float(lat)
+            if min_dist_km(lon, lat, lon_scale) > threshold_km:
+                extra.append(
+                    GridCell(
+                        cell_id=f"SE_ISLE_{i:04d}_{added:03d}",
+                        latitude=round(lat, 5),
+                        longitude=round(lon, 5),
+                        region=_approx_region(lat),
                     )
-                    add_placed(rep.x, rep.y)
-                    if max_cells is not None and len(cells) + len(extra) >= max_cells:
-                        return extra
+                )
+                added += 1
+                add_placed(lon, lat)
+                if max_cells is not None and len(cells) + len(extra) >= max_cells:
+                    return extra
+
+        if added == 0:
+            # Sub-probe-resolution part (smaller than PROBE_KM in some
+            # direction, or just unlucky with the grid's phase) -- guarantee
+            # it still gets *some* cell via its representative_point()
+            # (guaranteed inside the polygon, unlike a plain centroid, which
+            # can fall outside for concave/crescent shapes).
+            rep = part.representative_point()
+            if min_dist_km(rep.x, rep.y, lon_scale) > threshold_km:
+                extra.append(
+                    GridCell(
+                        cell_id=f"SE_ISLE_{i:04d}_000",
+                        latitude=round(rep.y, 5),
+                        longitude=round(rep.x, 5),
+                        region=_approx_region(rep.y),
+                    )
+                )
+                add_placed(rep.x, rep.y)
+                if max_cells is not None and len(cells) + len(extra) >= max_cells:
+                    return extra
 
     return extra
 
