@@ -128,7 +128,6 @@ const en: Partial<I18nDict> = {
   "panel.shareButton": "Share the forecast",
   "panel.shareCopied": "Link copied!",
 
-  "status.degraded": "Showing degraded-quality forecast data (see manifest warnings).",
   "status.sampleData": "Showing example data for only {count} locations — not full Sweden coverage.",
 
   "about.title": "About the forecast",

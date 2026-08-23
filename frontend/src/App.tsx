@@ -195,13 +195,25 @@ export default function App() {
     }
   }
 
+  // Sample-coverage is still surfaced -- "you're looking at 5 example
+  // points, not real Sweden coverage" is a genuinely different, actionable
+  // situation for a visitor. manifest.data_quality itself ("normal" /
+  // "degraded", set by forecast/src/pipeline.py from that run's own
+  // warnings/sample state -- see pipeline.py's `data_quality = "degraded"
+  // if (warnings or sample) else "normal"`) is deliberately NOT turned
+  // into a public banner here: it's an internal pipeline signal a visitor
+  // can't act on and shouldn't need to parse ("manifestvarningar" is
+  // meaningless outside this codebase), not a statement that the forecast
+  // is unusable -- the map still renders normally. The field, the
+  // pipeline's ability to set it, and its type in types/forecast.ts are
+  // all untouched; only this frontend's public-facing use of it is
+  // removed. A genuinely unusable/unfetchable forecast is a completely
+  // separate path (manifestError/dailyError -> errorBanner, below) and is
+  // unaffected by this change.
   const dataQualityWarning = useMemo(() => {
     if (!manifest) return null;
     if (manifest.cell_count < FULL_COVERAGE_MIN_CELLS) {
       return t("status.sampleData", { count: manifest.cell_count });
-    }
-    if (manifest.data_quality !== "normal") {
-      return t("status.degraded");
     }
     return null;
   }, [manifest, t]);
