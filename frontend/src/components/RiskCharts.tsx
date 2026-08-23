@@ -73,6 +73,21 @@ function findExtremes<T extends { risk: number }>(data: T[]): { high: T | null; 
   return { high, low };
 }
 
+// Both products are nominally 0-100 scores, but Myggrisk's real values
+// rarely clear ~35 (category bounds are 0/4/8/14/22 -- see
+// riskModel.ts::RISK_CATEGORIES, confirmed against the live dataset in
+// data/generated/diagnostics/national-diagnostics.json: p90 ~14, max ~34).
+// A fixed 0-100 y-axis squashed every Myggrisk line into the bottom third
+// of the chart, reading as "too low" even at "very high". Scale the axis
+// to the data (and to the top band's floor, so the highest category is
+// still reachable on-chart even on a quiet week) instead of hardcoding 100.
+function computeYMax(data: { risk: number }[], bands: { max: number }[]): number {
+  const dataMax = Math.max(0, ...data.map((d) => d.risk));
+  const topBandFloor = bands.length > 1 ? bands[bands.length - 2].max : 0;
+  const target = Math.max(dataMax * 1.15, topBandFloor * 1.1);
+  return Math.max(10, Math.ceil(target / 5) * 5);
+}
+
 export function SevenDayChart({
   daily,
   activityMultiplier,
@@ -106,6 +121,7 @@ export function SevenDayChart({
   const todayPoint = data.find((d) => d.isToday);
   const bands = isAbundanceLayer ? abundanceBands(abundanceThresholds) : RISK_CATEGORIES;
   const categoryFor = isAbundanceLayer ? (v: number) => abundanceCategory(v, abundanceThresholds) : riskCategory;
+  const yMax = computeYMax(data, bands);
 
   return (
     <div style={{ width: "100%", height: 190 }}>
@@ -120,7 +136,7 @@ export function SevenDayChart({
           <RiskBands bands={bands} />
           <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
           <XAxis dataKey="idx" tickFormatter={(idx: number) => data[idx]?.displayLabel ?? ""} tick={{ fontSize: 11 }} />
-          <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} width={34} allowDecimals={false} />
+          <YAxis domain={[0, yMax]} tick={{ fontSize: 11 }} width={34} allowDecimals={false} />
           <Tooltip content={<ChartTooltip t={t} categoryFor={categoryFor} />} />
           {todayPoint && (
             <ReferenceLine x={todayPoint.idx} stroke="var(--color-text-muted)" strokeDasharray="3 3">
@@ -173,6 +189,7 @@ export function HourlyChart({
   const nowPoint = data.find((d) => d.isNow);
   const bands = isAbundanceLayer ? abundanceBands(abundanceThresholds) : RISK_CATEGORIES;
   const categoryFor = isAbundanceLayer ? (v: number) => abundanceCategory(v, abundanceThresholds) : riskCategory;
+  const yMax = computeYMax(data, bands);
 
   return (
     <div style={{ width: "100%", height: 190 }}>
@@ -186,7 +203,7 @@ export function HourlyChart({
             tick={{ fontSize: 10 }}
             interval={5}
           />
-          <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} width={34} allowDecimals={false} />
+          <YAxis domain={[0, yMax]} tick={{ fontSize: 11 }} width={34} allowDecimals={false} />
           <Tooltip content={<ChartTooltip t={t} categoryFor={categoryFor} />} />
           {nowPoint && (
             <ReferenceLine x={nowPoint.idx} stroke="var(--color-text-muted)" strokeDasharray="3 3">
