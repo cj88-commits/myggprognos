@@ -1,7 +1,7 @@
 import { useI18n } from "../i18n";
 import type { I18nKey } from "../i18n/types";
 import type { CombinationParams, DailyRecord } from "../types/forecast";
-import { categoryIntensity, finalRiskForActivity, riskCategory } from "../lib/riskModel";
+import { categoryIntensity, categoryRank, finalRiskForActivity, riskCategory } from "../lib/riskModel";
 import { currentDateIso, formatStockholmDateLabel } from "../lib/time";
 
 export interface ForecastCardsProps {
@@ -51,15 +51,30 @@ export function ForecastCards({ daily, activityMultiplier, combination }: Foreca
   if (cards.length === 0) return null;
 
   // Highlight the best/worst day so users can compare at a glance (item 6)
-  // -- only meaningful with more than one card, and only when the days
-  // actually differ (no point calling one day both "best" and "worst" out
-  // of an otherwise-identical set).
-  const risksDiffer = cards.some((c) => c.risk !== cards[0].risk);
+  // -- gated on the *displayed category* differing, not the raw score.
+  // Two days can both read "Måttlig" while differing by a fraction of a
+  // point internally; badging one "HÖGST RISK" and the other "LÄGST RISK"
+  // in that case reads as an arbitrary/misleading ranking of two days a
+  // user can plainly see are shown identically. categoryRank (already
+  // used elsewhere to compare Myggrisk/Myggläge tiers) reuses the exact
+  // category each card already displays, so this is presentation-only --
+  // no new scoring, nothing invented.
   let bestIdx = -1;
   let worstIdx = -1;
-  if (cards.length > 1 && risksDiffer) {
-    bestIdx = cards.reduce((best, c, i) => (c.risk < cards[best].risk ? i : best), 0);
-    worstIdx = cards.reduce((worst, c, i) => (c.risk > cards[worst].risk ? i : worst), 0);
+  if (cards.length > 1) {
+    const ranks = cards.map((c) => categoryRank(c.category.key));
+    const minRank = Math.min(...ranks);
+    const maxRank = Math.max(...ranks);
+    if (minRank !== maxRank) {
+      // A tie *within* the best or worst tier (e.g. two days both the
+      // lowest-ranked category) is exactly the "arbitrarily pick the
+      // first one" case to avoid -- suppress that specific badge rather
+      // than crown one of several equally-ranked days.
+      const bestCandidates = ranks.flatMap((r, i) => (r === minRank ? [i] : []));
+      const worstCandidates = ranks.flatMap((r, i) => (r === maxRank ? [i] : []));
+      if (bestCandidates.length === 1) bestIdx = bestCandidates[0];
+      if (worstCandidates.length === 1) worstIdx = worstCandidates[0];
+    }
   }
 
   return (

@@ -194,6 +194,10 @@ a {
     top: 0.5rem;
     left: 0.5rem;
     right: 0.5rem;
+    gap: 0.4rem;
+  }
+  .map-only-controls {
+    gap: 0.4rem;
   }
   .control-group-search {
     flex: 1 1 auto;
@@ -201,6 +205,18 @@ a {
   }
   .search-box {
     min-width: 0;
+  }
+  /* Search + geolocate, sized to match .filters-toggle's 42px mobile
+     footprint below (mobile polish pass item 3) -- same reasoning as that
+     rule: a moderate reduction, still well clear of accepted touch-target
+     minimums, freeing a little more map both vertically and horizontally. */
+  .control-bar input[type="text"] {
+    padding: 0.26rem 0.5rem;
+    min-height: 42px;
+  }
+  .map-only-controls .icon-button {
+    min-width: 42px;
+    min-height: 42px;
   }
   /* MapLibre's own zoom control is positioned independently of our
      .control-bar (its own "top-right" anchor, ~10px from the edges) --
@@ -217,6 +233,12 @@ a {
   }
   .legend-panel {
     max-height: 40vh;
+  }
+  /* Matches the mobile .control-bar's shorter top inset (0.5rem) + its
+     now-42px row height, see the .status-banner rule for why this needs
+     to clear the control bar's row at all. */
+  .status-banner {
+    top: 3.75rem;
   }
   .app-header {
     /* Utility-header sizing (mobile polish pass item 6) -- deliberately
@@ -271,9 +293,10 @@ a {
   pointer-events: auto;
 }
 
-/* Search + geolocate, grouped (mobile polish pass item 1) -- see the
-   full-sheet visibility rule inside the bottom-sheet mobile block below,
-   which hides this whole group while the answer sheet is fully expanded. */
+/* Search + geolocate, grouped so they share the row's remaining width and
+   align/wrap as one unit next to the settings gear -- see the
+   .bottom-sheet--full rule further below, which hides the whole
+   .control-bar (this group included) while the answer sheet is expanded. */
 .map-only-controls {
   display: flex;
   align-items: center;
@@ -377,11 +400,15 @@ a {
 @media (max-width: 860px) {
   /* The always-visible mobile toolbar is now just search + locate-me +
      this one icon button -- product/activity settings move into the sheet
-     below. */
+     below. 42px (down from 44px) still comfortably clears every accepted
+     touch-target minimum (mobile polish pass item 3: "moderately reduce",
+     not "make tiny") while shaving a few px off the row's total height --
+     matched by .control-bar input[type=text] and .map-only-controls
+     .icon-button below so all three controls still align exactly. */
   .filters-toggle {
     display: flex;
-    width: 44px;
-    height: 44px;
+    width: 42px;
+    height: 42px;
     padding: 0;
     justify-content: center;
     align-items: center;
@@ -560,6 +587,17 @@ a {
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
+  /* Tighten the gap between the handle/hint and the panel's own content
+     (mobile polish pass item 5) -- .bottom-sheet-handle's 44px min-height
+     already floors its own box regardless of its padding, so the visible
+     "too much empty space" was really .panel-content's full 1rem top
+     padding (unchanged for the desktop side panel, which never had this
+     complaint) stacking on top of the handle. Scoped to the sheet context
+     only via the descendant selector. */
+  .bottom-sheet-scroll .panel-content {
+    padding-top: 0.5rem;
+  }
+
   /* The legend's default bottom-left position sits directly under the
      sheet's always-visible closed-state sliver; nudge it up to clear that
      (actual bottom-offset override lives further down, after the base
@@ -591,10 +629,20 @@ a {
      controls -- they pick WHERE on the map to look, which is meaningless
      once the map itself is off-screen -- so they're hidden outright here
      rather than fixing this with z-index alone (a higher sheet z-index
-     would just bury the settings dropdown again). The settings gear stays:
-     activity/product affect the forecast that's currently on screen, not
-     just the map underneath it. */
-  .app-shell:has(.bottom-sheet--full) .map-only-controls {
+     would just bury the settings dropdown again).
+     An earlier version of this rule hid only .map-only-controls and left
+     the settings gear (.filters-toggle) visible, reasoning that activity/
+     product affect the open forecast, not just the map. In practice that
+     left it as the sole remaining flex child of .control-bar once
+     .map-only-controls disappeared, so it visually snapped to the row's
+     start (top-left) instead of staying where it was tucked to the right
+     -- confirmed against a real-device report of a lone square icon
+     button sitting in the forecast sheet's top-left corner. The settings
+     gear opens .filters-panel, which is itself position:fixed and
+     visually anchored to screen edges (see its own mobile rule below), so
+     hiding the trigger with the rest of .control-bar is safe -- there's
+     nothing left it could orphan in an open, uncloseable state. */
+  .app-shell:has(.bottom-sheet--full) .control-bar {
     display: none;
   }
 }
@@ -892,12 +940,26 @@ a {
   display: block !important;
 }
 
+/* Source of the "text visible behind the search bar" report (mobile
+   polish pass item 2): this banner used to share .control-bar's own `top`
+   offset while being independently centered horizontally. .control-bar
+   itself has no background (only its children -- the search box, the
+   locate button, the settings gear -- do) and those children cluster on
+   the *left* of the row, so on any viewport where the centered banner's
+   x-position didn't land squarely under one of them, its text peeked out
+   through the transparent remainder of that row instead of being cleanly
+   covered or cleanly visible; z-index alone (banner:15 vs. control-bar:46)
+   only decided who wins where they actually overlap; it did nothing about
+   the parts of the banner that didn't. Positioning the banner below the
+   control bar's own (reliably single-row) height, rather than stacking
+   the two in the same row, removes the collision at the layout level. */
 .status-banner {
   position: absolute;
-  top: 0.75rem;
+  top: 4rem;
   left: 50%;
   transform: translateX(-50%);
   z-index: 15;
+  max-width: min(480px, calc(100vw - 1.5rem));
   padding: 0.45rem 0.9rem;
   border-radius: var(--radius);
   font-size: 0.82rem;
