@@ -10,6 +10,10 @@ on:
         description: "Use the small sample grid + synthetic weather instead of the full Sweden grid + Open-Meteo"
         type: boolean
         default: false
+      min_cell_count_ratio:
+        description: "Override the 0.9 cell-count-drop safety floor for this run only (e.g. '0.85') -- leave blank for routine runs; only set this after verifying by hand that a grid/boundary change deliberately shrank the cell count"
+        type: string
+        default: ""
 
 # Never run two forecast generations at once (a scheduled run and a manual
 # dispatch could otherwise race and interleave writes); queue rather than
@@ -162,7 +166,17 @@ jobs:
                   git config user.email "actions@users.noreply.github.com"
                   git commit -m "Checkpoint weather history cache (run in progress)"
                   git fetch origin main
-                  git rebase origin/main || git rebase --abort
+                  # --autostash: grid.json/cell_geometry.json.gz can be sitting
+                  # uncommitted in the working tree for the whole run (see the
+                  # "Prepare grid"/"Prepare cell geometry" steps above -- they're
+                  # deliberately not committed until the final step, so a
+                  # mismatched painted layer never gets deployed ahead of its
+                  # matching forecast data). Plain `git rebase` refuses to start
+                  # at all with ANY uncommitted tracked-file changes present,
+                  # confirmed live ("cannot rebase: You have unstaged changes")
+                  # -- autostash tucks them aside for the rebase and restores
+                  # them after, whether it succeeds or is aborted below.
+                  git rebase --autostash origin/main || git rebase --abort
                   git push origin HEAD:main || echo "checkpoint push failed, will retry next interval"
                 fi
               fi
@@ -171,10 +185,15 @@ jobs:
           CHECKPOINT_PID=$!
           trap 'kill "$CHECKPOINT_PID" 2>/dev/null || true' EXIT
 
+          RATIO_FLAG=""
+          if [ -n "${{ inputs.min_cell_count_ratio }}" ]; then
+            RATIO_FLAG="--min-cell-count-ratio ${{ inputs.min_cell_count_ratio }}"
+          fi
+
           if [ "${{ inputs.sample }}" = "true" ]; then
             python scripts/run_forecast.py --sample --verbose
           else
-            python scripts/run_forecast.py --verbose
+            python scripts/run_forecast.py --verbose $RATIO_FLAG
           fi
 
       - name: Check for changes

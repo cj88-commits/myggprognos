@@ -185,6 +185,7 @@ def run_pipeline(
     history_cache_path: Path | None = None,
     cells_override: list[GridCell] | None = None,
     cache_checkpoint_chunk_cells: int | None = None,
+    min_cell_count_ratio: float | None = None,
 ) -> dict:
     output_dir = output_dir or (GENERATED_DATA_DIR / "latest")
     # Deliberately a sibling of output_dir, not inside it -- output_dir
@@ -475,8 +476,9 @@ def run_pipeline(
     # --- Sanity checks (before publishing anything else) ---
     previous_manifest = load_previous_manifest(output_dir)
     previous_cell_count = previous_manifest.get("cell_count") if previous_manifest else None
+    sanity_kwargs = {} if min_cell_count_ratio is None else {"min_cell_count_ratio": min_cell_count_ratio}
     try:
-        warnings = run_sanity_checks(cells, daily_records_by_date, previous_cell_count)
+        warnings = run_sanity_checks(cells, daily_records_by_date, previous_cell_count, **sanity_kwargs)
     except OutputValidationError as exc:
         logger.error("Sanity checks failed, aborting publish: %s", exc)
         raise

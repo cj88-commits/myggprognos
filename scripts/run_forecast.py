@@ -26,6 +26,14 @@ def main() -> None:
              "production source (see README); open-meteo is kept as a fallback.",
     )
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument(
+        "--min-cell-count-ratio", type=float, default=None,
+        help="Override run_sanity_checks' default 0.9 floor for one run -- use only when a "
+             "grid/boundary change deliberately shrinks the cell count (e.g. removing "
+             "erroneously-included foreign land near a border) and the drop has already "
+             "been verified by hand; leave unset for routine runs so an accidental cell-count "
+             "regression still aborts publishing.",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -70,6 +78,7 @@ def main() -> None:
             sample=args.sample,
             weather_provider=weather_provider,
             cache_checkpoint_chunk_cells=cache_checkpoint_chunk_cells,
+            min_cell_count_ratio=args.min_cell_count_ratio,
         )
     except Exception:
         logging.getLogger("mosquito_forecast").exception("Forecast pipeline failed")
