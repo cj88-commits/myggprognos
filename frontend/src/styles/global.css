@@ -270,7 +270,18 @@ a {
   position: absolute;
   top: 0.75rem;
   left: 0.75rem;
-  right: 0.75rem;
+  /* Wider than the 0.75rem left/top inset: MapLibre's own zoom control is
+     positioned independently at its own "top-right" anchor (~10px from the
+     viewport edge, see the mobile override above, which solves the same
+     clash by pushing the zoom control down instead -- not an option here
+     since .filters-toggle sits inline with the search bar on desktop, not
+     alone on its own row). Confirmed live via getBoundingClientRect on
+     both: at 0.75rem, .filters-toggle's right edge (1524px in a 1536px-
+     wide test viewport) overlapped the zoom control's left edge (1497px)
+     by 27px, so the zoom control's rounded corner peeked out from behind
+     the "Installningar" pill instead of sitting cleanly beside it. 3rem
+     clears it with a ~9px gap at that same width.  */
+  right: 3rem;
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
