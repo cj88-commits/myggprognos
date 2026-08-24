@@ -316,13 +316,14 @@ a {
   min-width: 0;
 }
 
-/* Only search + geolocate stay inline on every breakpoint now (item 1):
-   which day (see .day-selector, inside the answer panel) and which
-   product/activity (below, inside .filters-panel) no longer need a
-   duplicate-per-breakpoint rendering trick, since neither is a map-area
-   control that has to fit next to the zoom buttons. */
+/* Shown alongside the text label on desktop (not a duplicate-per-
+   breakpoint trick like the old product/activity controls this comment
+   used to describe -- just the same gear glyph the mobile icon-only
+   button below already uses, kept visible here too per user request). */
 .filters-toggle-icon {
-  display: none;
+  display: inline-block;
+  font-size: 0.95rem;
+  line-height: 1;
 }
 
 .filters-toggle {
