@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-08-24T13:01:51Z",
+  "generated_at": "2026-08-24T14:53:09Z",
   "model_version": "0.3.0",
-  "build_sha": "20bbb45dee87a818e6064e889337fb67c3be3204",
+  "build_sha": "2e21989bddab6fe968102fc8fc4b0b163e9ddca4",
   "forecast_start": "2026-08-24",
   "forecast_end": "2026-08-30",
-  "hourly_until": "2026-08-26T13:00:00Z",
-  "cell_count": 24732,
+  "hourly_until": "2026-08-26T14:00:00Z",
+  "cell_count": 24772,
   "data_quality": "degraded",
   "daily_files": [
     "daily/2026-08-24.json.gz",
@@ -17,7 +17,6 @@
     "daily/2026-08-30.json.gz"
   ],
   "hourly_files": [
-    "hourly/2026-08-24T13.json.gz",
     "hourly/2026-08-24T14.json.gz",
     "hourly/2026-08-24T15.json.gz",
     "hourly/2026-08-24T16.json.gz",
@@ -65,7 +64,8 @@
     "hourly/2026-08-26T10.json.gz",
     "hourly/2026-08-26T11.json.gz",
     "hourly/2026-08-26T12.json.gz",
-    "hourly/2026-08-26T13.json.gz"
+    "hourly/2026-08-26T13.json.gz",
+    "hourly/2026-08-26T14.json.gz"
   ],
   "activities": {
     "general": 1.0,
@@ -77,7 +77,7 @@
     "outdoor_dining": 1.1
   },
   "warnings": [
-    "6963/33820 cells (21%) are using placeholder static features, not real GIS data -- check cell_features.json coverage and raster tile downloads."
+    "6967/33824 cells (21%) are using placeholder static features, not real GIS data -- check cell_features.json coverage and raster tile downloads."
   ],
   "series_files": [
     "series/0.json.gz",
