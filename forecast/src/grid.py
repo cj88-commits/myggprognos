@@ -54,6 +54,42 @@ def _in_sweden_bbox(lat: float, lon: float) -> bool:
     )
 
 
+class _PartsContainment:
+    """Point-in-boundary test via an STRtree over the boundary's individual
+    parts, instead of a single `prep()`-wrapped merged MultiPolygon.
+
+    A raster-derived boundary (see scripts/build_worldcover_boundary.py) can
+    legitimately contain overlapping parts -- e.g. a WorldCover blob that's
+    supposed to be dropped/clipped for being mostly redundant with the
+    original Natural Earth outline, but (confirmed live, see the two
+    ~68.2N parts spanning 19-20E and 22-23E) survived a rebuild at its full,
+    unclipped extent, ~100% inside the existing mainland part. Combining
+    such parts into one MultiPolygon is then topologically invalid (OGC
+    requires MultiPolygon members not overlap) -- and confirmed live,
+    `.contains(Point)` on that combined geometry (even prepared) can
+    silently return False for a point genuinely covered by one of its
+    member parts, which is exactly what produced two large (~15-25km
+    across) white/uncovered gaps in the far-north grid despite the
+    underlying boundary file having real land there. Every individual part
+    coming out of this pipeline is independently valid (both
+    build_worldcover_boundary.py and build_osm_land_supplement.py run
+    make_valid() per-part before writing them out), so testing "does ANY
+    part contain this point" via a spatial index sidesteps the invalid-
+    combination problem entirely, and confirmed live is also far faster
+    than repairing the whole country's geometry with make_valid() once
+    (~3s for a full national lattice sweep vs. ~100s for make_valid() on
+    the 58,741-part merged multipolygon)."""
+
+    def __init__(self, parts: list):
+        from shapely.strtree import STRtree
+
+        self._parts = parts
+        self._tree = STRtree(parts)
+
+    def contains(self, point) -> bool:
+        return any(self._parts[i].contains(point) for i in self._tree.query(point))
+
+
 def _load_boundary_polygon(boundary_path: Path | None = None):
     """Return a shapely polygon/multipolygon for Sweden if a boundary file is
     present under data/static, else None. Uses shapely directly (already a
@@ -69,7 +105,6 @@ def _load_boundary_polygon(boundary_path: Path | None = None):
         return None
     try:
         from shapely.geometry import MultiPolygon, shape
-        from shapely.prepared import prep
 
         with open(boundary_path, "r", encoding="utf-8") as fh:
             data = json.load(fh)
@@ -83,16 +118,15 @@ def _load_boundary_polygon(boundary_path: Path | None = None):
         # actual use below (.contains(), STRtree indexing, iterating
         # .geoms) -- nothing here needs adjacent parts merged into fewer,
         # bigger ones, so skip the cost entirely and flatten to one
-        # MultiPolygon directly. Plain MultiPolygon.contains() has no
-        # spatial index and would degrade toward O(parts) per query,
-        # dominated by the many candidate points that are NOT on land (most
-        # of the bbox is sea) and so must be checked against every part
-        # before returning False -- prep() builds a GEOS prepared geometry
-        # (internal STRtree) once instead, reused by every .contains() call
-        # below.
+        # MultiPolygon directly. `merged` (returned as-is, invalidity and
+        # all) is only ever used downstream for .geom_type/.geoms
+        # (_supplementary_island_cells iterates individual parts); the
+        # containment test itself goes through _PartsContainment instead of
+        # a prepared merged geometry -- see its docstring for why plain
+        # prep(merged).contains() is unsafe here.
         parts = [p for geom in geometries for p in (geom.geoms if geom.geom_type == "MultiPolygon" else [geom])]
         merged = parts[0] if len(parts) == 1 else MultiPolygon(parts)
-        return prep(merged), merged
+        return _PartsContainment(parts), merged
     except Exception:
         return None
 
