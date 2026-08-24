@@ -73,9 +73,21 @@ NODATA_VALUE = 0
 # A part connected to the mainland's own coastline (the actual cause of the
 # original performance blowup -- one part with ~25,000 vertices, minutes to
 # simplify alone) is overwhelmingly *inside* Natural Earth's mainland
-# polygon, so the >50%-area-overlap threshold below still drops it (and
-# still avoids ever calling .simplify() on it), while a real island that
-# only clips a corner of NE's rough outline stays in at its full extent.
+# polygon, so the >50%-area-overlap threshold below still triggers "mostly
+# redundant" for it (and still avoids ever calling .simplify() on the whole
+# thing), while a real island that only clips a corner of NE's rough outline
+# stays in at its full extent.
+#
+# "Mostly redundant" no longer means DROPPED, though -- see
+# _split_by_redundancy. Confirmed live: treating it as all-or-nothing
+# silently lost ~3,194km2 of genuine Swedish land nationally (3,333 separate
+# spots, e.g. a residential area in Nynashamn kommun), because a real gap in
+# Natural Earth's own coarse coastline tracing can sit *inside* an otherwise
+# ~98%+ redundant blob (the connected mainland coastline for a whole tile)
+# -- the redundancy fraction is computed over the WHOLE blob, so one
+# genuinely uncovered notch a few km2 wide doesn't move a 6deg2 blob's
+# overall ratio anywhere near the 50% line, and the entire blob -- notch
+# included -- was being thrown out.
 REDUNDANT_OVERLAP_FRACTION = 0.5
 
 
@@ -91,24 +103,74 @@ def _load_ne_index(base_boundary_path: Path):
     return parts, STRtree(parts)
 
 
-def _redundant_with_ne(part, ne_parts, ne_tree) -> bool:
-    if ne_tree is None or part.area <= 0:
-        return False
+def _load_admin_boundary(admin_boundary_path: Path):
+    """Return (prepared, raw) shapely geometry for Sweden's real
+    administrative outline, or (None, None) if the file isn't present."""
+    if not admin_boundary_path.exists():
+        return None, None
+    with open(admin_boundary_path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    geoms = [shape(feat["geometry"]) for feat in data["features"]]
+    parts = [p for g in geoms for p in (g.geoms if g.geom_type == "MultiPolygon" else [g])]
+    merged = parts[0] if len(parts) == 1 else MultiPolygon(parts)
+    from shapely.prepared import prep
+
+    return prep(merged), merged
+
+
+def _split_by_redundancy(part, ne_parts, ne_tree, admin_prepared, admin_shape):
+    """Return the portion of `part` to keep, or None to drop it entirely.
+
+    A part that isn't mostly redundant with Natural Earth is returned
+    unchanged (as before). A part that IS mostly redundant used to be
+    dropped outright -- now only the already-covered portion is discarded;
+    whatever genuinely isn't covered by Natural Earth is kept, clipped to
+    Sweden's real admin boundary (`admin_prepared`/`admin_shape`) so that a
+    remainder which is mostly a neighbouring country (e.g. a huge mostly-
+    Norway blob that happens to be >50% redundant against Natural Earth's
+    own imprecise border-area tracing) doesn't reintroduce foreign land --
+    confirmed live: without this clip, five border-adjacent tiles alone
+    would have added ~128,000km2 of clearly-not-Sweden remainder area.
+    """
+    if part.area <= 0:
+        return None
+    if ne_tree is None:
+        return part
     idxs = ne_tree.query(part)
     if len(idxs) == 0:
-        return False
+        return part
     nearby = unary_union([ne_parts[i] for i in idxs])
     if not part.intersects(nearby):
-        return False
-    return (part.intersection(nearby).area / part.area) > REDUNDANT_OVERLAP_FRACTION
+        return part
+    if (part.intersection(nearby).area / part.area) <= REDUNDANT_OVERLAP_FRACTION:
+        return part
+    remainder = part.difference(nearby)
+    if remainder.is_empty:
+        return None
+    if admin_prepared is None:
+        return remainder
+    if admin_prepared.contains(remainder):
+        return remainder
+    if not admin_prepared.intersects(remainder):
+        return None
+    clipped = remainder.intersection(admin_shape)
+    return clipped if not clipped.is_empty else None
 
 
 def tile_land_parts(
-    tif_path: Path, downsample: int, simplify_deg: float, ne_parts=None, ne_tree=None, verbose: bool = False
+    tif_path: Path,
+    downsample: int,
+    simplify_deg: float,
+    ne_parts=None,
+    ne_tree=None,
+    admin_prepared=None,
+    admin_shape=None,
+    verbose: bool = False,
 ) -> list:
     """Return a list of simplified, NOT unioned, land Polygons for one tile --
-    excluding only parts that are mostly redundant with the original Natural
-    Earth boundary (`ne_parts`/`ne_tree`), see _redundant_with_ne."""
+    parts mostly redundant with the original Natural Earth boundary
+    (`ne_parts`/`ne_tree`) are clipped down to just their non-redundant
+    remainder rather than dropped outright, see _split_by_redundancy."""
     t0 = time.time()
     with rasterio.open(tif_path) as ds:
         arr = ds.read(1)
@@ -137,16 +199,27 @@ def tile_land_parts(
     n_raw = len(raw_geoms)
 
     if ne_tree is not None:
-        kept = [p for p in raw_geoms if not _redundant_with_ne(p, ne_parts, ne_tree)]
-        n_dropped = n_raw - len(kept)
+        kept = []
+        n_dropped = 0
+        n_clipped = 0
+        for p in raw_geoms:
+            result = _split_by_redundancy(p, ne_parts, ne_tree, admin_prepared, admin_shape)
+            if result is None:
+                n_dropped += 1
+            else:
+                if result.area < p.area:
+                    n_clipped += 1
+                kept.append(result)
         raw_geoms = np.array(kept)
     else:
         n_dropped = 0
+        n_clipped = 0
         raw_geoms = np.array(raw_geoms)
     if verbose:
         print(
             f"    polygonize: {time.time() - t0:.1f}s, {n_raw} raw parts "
-            f"({n_dropped} >{REDUNDANT_OVERLAP_FRACTION:.0%} redundant with Natural Earth, dropped; "
+            f"({n_dropped} fully redundant with Natural Earth and outside Sweden's admin border, dropped; "
+            f"{n_clipped} mostly redundant, clipped to their real remainder; "
             f"{len(raw_geoms)} kept)",
             flush=True,
         )
@@ -205,7 +278,15 @@ def main() -> None:
     parser.add_argument(
         "--base-boundary",
         default=str(STATIC_DATA_DIR / "sweden_boundary.natural_earth_original.geojson"),
-        help="Original (pre-rebuild) boundary -- parts mostly redundant with it are dropped; see _redundant_with_ne",
+        help="Original (pre-rebuild) boundary -- parts mostly redundant with it are clipped to their "
+             "non-redundant remainder rather than dropped; see _split_by_redundancy.",
+    )
+    parser.add_argument(
+        "--admin-boundary",
+        default=str(STATIC_DATA_DIR / "sweden_admin_boundary_osm.geojson"),
+        help="Authoritative Sweden country outline (see scripts/build_sweden_admin_boundary.py) -- "
+             "used to keep a redundancy remainder or a border-buffer straddling part from reintroducing "
+             "land that's actually in a neighbouring country.",
     )
     args = parser.parse_args()
 
@@ -219,6 +300,7 @@ def main() -> None:
 
     if not args.finalize:
         ne_parts, ne_tree = _load_ne_index(Path(args.base_boundary))
+        admin_prepared, admin_shape = _load_admin_boundary(Path(args.admin_boundary))
         processed = 0
         for i, tif_path in enumerate(tiles, 1):
             cache_path = cache_dir / f"{tif_path.stem}.json"
@@ -230,7 +312,14 @@ def main() -> None:
                 break
             t0 = time.time()
             parts = tile_land_parts(
-                tif_path, args.downsample, args.simplify_deg, ne_parts=ne_parts, ne_tree=ne_tree, verbose=True
+                tif_path,
+                args.downsample,
+                args.simplify_deg,
+                ne_parts=ne_parts,
+                ne_tree=ne_tree,
+                admin_prepared=admin_prepared,
+                admin_shape=admin_shape,
+                verbose=True,
             )
             elapsed = time.time() - t0
             with open(cache_path, "w", encoding="utf-8") as fh:
@@ -276,29 +365,23 @@ def main() -> None:
     # below SWEDEN_BBOX's 55.2N floor) after the first version of this
     # script, since unlike the original Natural Earth source (already
     # clipped to Sweden's actual country shape), raw WorldCover has no
-    # country-boundary awareness at all. Two-stage filter: SWEDEN_BBOX
-    # first (cheap, catches anything clearly outside the country, like the
-    # Denmark/Germany case above) and a buffer around the real Sweden
-    # shape second (catches near-border false positives the bbox alone
-    # can't, e.g. Norway/Finland land inside the bbox rectangle) --
-    # BORDER_BUFFER_DEG is deliberately modest (~17km) since Sweden and
-    # Denmark are only ~4km apart at the narrowest point of Oresund
-    # (Helsingborg/Helsingor) -- close enough that this buffer alone can't
-    # fully rule out a genuine Danish town leaking in there (verify near
-    # Helsingborg specifically after any rebuild, alongside the archipelago
-    # check this script exists for).
+    # country-boundary awareness at all. Two-stage filter: SWEDEN_BBOX first
+    # (cheap, catches anything clearly outside the country, like the
+    # Denmark/Germany case above), then Sweden's real admin boundary second
+    # (catches near-border false positives the bbox alone can't, e.g.
+    # Norway/Finland land inside the bbox rectangle).
+    #
+    # This used to clip against a plain buffer(~17km) around the reprocessed
+    # Natural Earth parts instead of the real admin boundary -- confirmed
+    # live that a buffer isn't reliable across a LAND border: a genuine
+    # Finnish part near Pello sat well within 17km of already-recognized
+    # Swedish land and was kept whole (real country borders don't correlate
+    # with "close to Sweden's coastline" the way a sea gap does). Same fix
+    # already applied to scripts/build_osm_land_supplement.py; using the
+    # authoritative outline here too instead of a distance heuristic.
     from config import SWEDEN_BBOX
 
-    BORDER_BUFFER_DEG = 0.15
-    sweden_buffer_raw = None
-    sweden_shape_prepared = None
-    if base_parts:
-        from shapely.prepared import prep
-
-        sweden_buffer_raw = MultiPolygon(base_parts).buffer(BORDER_BUFFER_DEG)
-        # prep() so the ~83k .intersects() calls below are STRtree-indexed
-        # instead of unindexed O(parts) checks against the buffered shape.
-        sweden_shape_prepared = prep(sweden_buffer_raw)
+    admin_prepared, admin_shape = _load_admin_boundary(Path(args.admin_boundary))
 
     kept = []
     n_dropped_bbox = 0
@@ -309,44 +392,43 @@ def main() -> None:
         if maxx < SWEDEN_BBOX["min_lon"] or minx > SWEDEN_BBOX["max_lon"] or maxy < SWEDEN_BBOX["min_lat"] or miny > SWEDEN_BBOX["max_lat"]:
             n_dropped_bbox += 1
             continue
-        if sweden_shape_prepared is not None and not sweden_shape_prepared.intersects(p):
+        if admin_prepared is None:
+            kept.append(p)
+            continue
+        if admin_prepared.contains(p):
+            kept.append(p)
+            continue
+        if not admin_prepared.intersects(p):
             n_dropped_border += 1
             continue
         # A raw WorldCover tile is a fixed 3x3deg block -- for a part whose
-        # bbox merely BRUSHES the border buffer at one corner while the bulk
-        # of it extends well beyond, keeping `p` whole (the previous
+        # bbox merely BRUSHES Sweden's real border at one corner while the
+        # bulk of it extends well beyond, keeping `p` whole (the original
         # behaviour: any .intersects() -> keep the entire part) let entire
         # neighbouring-country regions through. Confirmed live: part 15989
-        # (bounds 24-27E, 63-66N) touched the buffer near Haparanda at its
+        # (bounds 24-27E, 63-66N) touched the border near Haparanda at its
         # NW corner and was kept in full, adding ~130 grid cells ~300km
         # away in central Finland once the (now-fixed) supplementary-cell
         # generator got fast/thorough enough to actually probe that far
-        # corner of such a large part -- 7 parts total this way, ~3,200
-        # cells combined, none of it visible with the old, slower generator
-        # that never fully processed them. Clipping to the buffered Sweden
-        # shape keeps only the genuinely-close-to-the-border portion (a
-        # normal small island entirely inside the buffer is unaffected --
-        # intersection() with a shape that fully contains it returns itself
-        # unchanged) instead of an all-or-nothing keep/drop per part.
-        if sweden_buffer_raw is not None:
-            clipped = p.intersection(sweden_buffer_raw)
-            if clipped.is_empty:
-                n_dropped_border += 1
-                continue
-            if clipped.area < p.area:
-                n_clipped += 1
-            if clipped.geom_type == "Polygon":
-                kept.append(clipped)
-            elif clipped.geom_type in ("MultiPolygon", "GeometryCollection"):
-                kept.extend(g for g in clipped.geoms if g.geom_type == "Polygon")
+        # corner of such a large part. Clipping to the real admin boundary
+        # keeps only the genuinely-Swedish portion (a normal small island
+        # entirely inside it is unaffected -- the admin_prepared.contains()
+        # branch above already returns it unchanged).
+        clipped = p.intersection(admin_shape)
+        if clipped.is_empty:
+            n_dropped_border += 1
             continue
-        kept.append(p)
+        n_clipped += 1
+        if clipped.geom_type == "Polygon":
+            kept.append(clipped)
+        elif clipped.geom_type in ("MultiPolygon", "GeometryCollection"):
+            kept.extend(g for g in clipped.geoms if g.geom_type == "Polygon")
     small_parts = kept
     n_small_islands = len(small_parts)
     print(
         f"{n_small_raw} raw small-island parts -> {n_dropped_bbox} outside SWEDEN_BBOX, "
-        f"{n_dropped_border} outside {BORDER_BUFFER_DEG}deg border buffer, "
-        f"{n_clipped} straddling parts clipped to the buffer, {n_small_islands} kept",
+        f"{n_dropped_border} outside Sweden's admin boundary, "
+        f"{n_clipped} straddling parts clipped to it, {n_small_islands} kept",
         flush=True,
     )
 
