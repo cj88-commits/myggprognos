@@ -44,10 +44,24 @@ data/static/worldcover_boundary_cache/
 
 # NOTE: data/generated/ is intentionally NOT ignored. forecast.yml commits
 # data/generated/latest on every run (see its "Commit and push updated
-# forecast" step) and deploy-pages.yml reads it straight from the repo to
-# bundle with the site; ignoring it here silently broke that commit step
-# (git add failed on an explicitly-ignored path) and left production
-# permanently serving the small sample dataset from frontend/public/data/latest.
+# forecast" step) and deploy-pages.yml/netlify.toml both read it straight
+# from the repo to bundle with the site; ignoring it here silently broke
+# that commit step (git add failed on an explicitly-ignored path) and left
+# production permanently serving the small sample dataset from
+# frontend/public/data/latest.
+
+# Ad-hoc diagnostic/benchmark script outputs under data/generated/diagnostics/
+# -- not consumed by the frontend or forecast pipeline (dev tooling only),
+# reproducible from the scripts that made them. Some earlier diagnostics
+# files ARE already committed (e.g. report.json/md, benchmark-report.*,
+# static-data-audit.*) and stay tracked regardless of these patterns; this
+# only stops the forecast.yml commit step's broad `git add data/generated`
+# from sweeping in new ad-hoc CSV/JSON dumps like these.
+data/generated/diagnostics/*.csv
+data/generated/diagnostics/histograms.json
+data/generated/diagnostics/scatter_sample.json
+data/generated/diagnostics/national-diagnostics*.json
+data/generated/diagnostics/historical/
 
 # Claude Code local session settings (not part of the project)
 .claude/

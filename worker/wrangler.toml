@@ -10,9 +10,16 @@ database_name = "myggprognos-reports"
 database_id = "ab6e5475-646e-402e-ab63-b02e6af48e6c"
 
 [vars]
-# Comma-separated list of origins allowed to call this API. Includes the
-# live GitHub Pages origin plus localhost dev/preview ports.
-ALLOWED_ORIGINS = "https://cj88-commits.github.io,http://localhost:5173,http://localhost:4173"
+# Comma-separated list of origins allowed to call this API. Netlify
+# (https://zesty-pony-0b7626.netlify.app -- the actual auto-generated
+# Netlify subdomain currently in use; update this if/when a custom domain
+# is pointed at the site) is the production frontend; the GitHub Pages
+# origin is kept as a legacy fallback (see deploy-pages.yml) and localhost
+# covers dev/preview ports. NOTE: this is a live [vars] value read by
+# cors.ts at request time -- pushing this change requires a `wrangler
+# deploy` (or `npm run deploy` in worker/) to take effect, since Cloudflare
+# Workers vars aren't redeployed by the GitHub/Netlify pipelines.
+ALLOWED_ORIGINS = "https://zesty-pony-0b7626.netlify.app,https://myggprognos.github.io,http://localhost:5173,http://localhost:4173"
 # Non-secret salt for hashing submitter IPs for rate-limiting only; for
 # production prefer `wrangler secret put REPORT_HASH_SALT` instead of
 # committing a real salt here.

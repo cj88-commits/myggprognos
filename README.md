@@ -157,7 +157,7 @@ faithful to the actual calculation, not a plausible-sounding guess.
 ## Architecture
 
 ```
-frontend/   React + TypeScript + Vite + MapLibre GL JS + Recharts (both lazy-loaded), deployed to GitHub Pages
+frontend/   React + TypeScript + Vite + MapLibre GL JS + Recharts (both lazy-loaded), deployed to Netlify (GitHub Pages kept as a legacy fallback, see deploy-pages.yml)
 forecast/   Python 3.12 pipeline (weather → features → rule-based model → generated JSON), run by GitHub Actions every 6h
 worker/     Cloudflare Worker + D1, a tiny API for user mosquito reports
 data/       static (grid + boundary + real land-cover/elevation features), samples (fixtures), generated (pipeline output)
@@ -166,16 +166,22 @@ scripts/    one-off/maintenance CLIs: prepare_grid, download_static_gis_data, do
 
 No persistent backend server: the frontend reads pre-computed, gzip-compressed JSON files published as
 static assets, and the only dynamic API is the small Worker used for user reports. This keeps hosting cost
-close to $0/month at full-Sweden traffic levels (GitHub Pages is free; Cloudflare Workers + D1 free tiers are
-generous; both weather sources are free and keyless).
+close to $0/month at full-Sweden traffic levels (Netlify's and GitHub Pages' free tiers both cover this;
+Cloudflare Workers + D1 free tiers are generous; both weather sources are free and keyless).
 
 ### Data flow
 
 1. `forecast.yml` runs the Python pipeline every 6 hours: fetch weather (SMHI, see "Weather data source"
    below) → compute features →
-   score with the rule-based model → write compact gzip JSON under `data/generated/latest/` → commit.
-2. `deploy-pages.yml` builds the frontend and bundles `data/generated/latest/` alongside it, then deploys to
-   GitHub Pages.
+   score with the rule-based model → write compact gzip JSON under `data/generated/latest/` → commit to
+   `main` (using the default `GITHUB_TOKEN`, so pushes always target whatever repo the workflow runs in --
+   no hardcoded owner/repo).
+2. Netlify (`netlify.toml`, base directory `frontend/`) auto-builds on every push to `main`. Its build
+   command runs the normal `npm run build`, then bundles `data/generated/latest/` into `dist/data/latest`
+   the same way `deploy-pages.yml` does for GitHub Pages -- `data/generated/latest/` lives outside
+   `frontend/`, so without this step Netlify would only ever ship the small sample dataset committed at
+   `frontend/public/data/latest/`. `deploy-pages.yml` also still runs on the same trigger as a legacy
+   fallback publish target (see the note at the top of that workflow); it does not feed Netlify anything.
 3. The frontend fetches `manifest.json`, then only the specific `daily/*.json.gz` / `hourly/*.json.gz` /
    `series/*.json.gz` files needed for the current view (never the whole dataset at once).
 4. User reports go straight from the frontend to the Cloudflare Worker → D1, independent of the forecast
@@ -405,12 +411,29 @@ Three workflows in `.github/workflows/`:
   `concurrency: cancel-in-progress: false` so overlapping runs queue instead of racing. **If the pipeline's
   sanity checks fail** (see `forecast/src/output.py`), the job fails before anything is committed — the
   previously published forecast stays live.
-- **`deploy-pages.yml`** — builds the frontend, bundles the latest forecast data (falling back to the
-  committed sample data if no full-grid forecast exists yet), and deploys to GitHub Pages via
-  `actions/deploy-pages`.
+- **`deploy-pages.yml`** — legacy/fallback (see the note at the top of the file). Builds the frontend,
+  bundles the latest forecast data (falling back to the committed sample data if no full-grid forecast
+  exists yet), and deploys to GitHub Pages via `actions/deploy-pages`. Netlify is the production deploy
+  target and does not depend on this workflow.
 
-To enable: in repo Settings → Pages, set source to "GitHub Actions". No secrets are required for the
-default (keyless) Open-Meteo + demo-basemap configuration.
+To enable Pages as a fallback: in repo Settings → Pages, set source to "GitHub Actions". No secrets are
+required for the default (keyless) Open-Meteo + demo-basemap configuration.
+
+### Netlify setup (production)
+
+Site settings (Netlify UI, or equivalently `netlify.toml` at the repo root, which takes precedence once
+present):
+
+- **Branch:** `main`
+- **Base directory:** `frontend`
+- **Build command:** see `netlify.toml` -- runs `npm run build`, then bundles `data/generated/latest/`
+  into `dist/data/latest` (same data `deploy-pages.yml` bundles for Pages)
+- **Publish directory:** `dist` (resolves to `frontend/dist`)
+
+No new secrets are required -- the forecast pipeline pushes to `main` with the built-in `GITHUB_TOKEN`,
+and Netlify's own "auto-deploy on push to `main`" setting picks that commit up without any build hook or
+API token. Netlify auto-detects `netlify.toml`; no manual dashboard change is needed unless the site's
+existing UI-configured base/publish directories differ from the values above.
 
 ### Historical forecast archive & automatic cleanup
 

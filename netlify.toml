@@ -1,0 +1,13 @@
+# Production deploy target (see README "GitHub Actions setup" / "Architecture").
+#
+# forecast.yml commits fresh data/generated/latest/ to `main` every 6h.
+# That directory lives outside frontend/ (Netlify's base directory), so a
+# plain `npm run build` never picks it up -- Vite only copies frontend's own
+# public/data/latest/ (a small committed sample dataset) into dist/. This
+# build command bundles the real generated data in, the same way
+# deploy-pages.yml's "Bundle forecast data with the site" step does for
+# GitHub Pages, so Netlify serves the same fresh data.
+[build]
+base = "frontend"
+publish = "dist"
+command = "npm run build && (test -f ../data/generated/latest/manifest.json && rm -rf dist/data/latest && cp -r ../data/generated/latest dist/data/latest || echo 'No generated forecast found; keeping bundled sample data.')"
