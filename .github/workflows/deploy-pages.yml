@@ -1,10 +1,17 @@
-# LEGACY / FALLBACK: Netlify (netlify.toml, base=frontend) is the production
-# deployment target as of the myggprognos/myggprognos migration -- it builds
-# from the same `main` pushes this workflow does and bundles the same
-# data/generated/latest, so it does not depend on this workflow running.
-# Kept active as a secondary publish target during migration; safe to
-# disable later by removing the `push`/`workflow_dispatch` triggers (or the
-# whole file) once Netlify is confirmed as the sole production host.
+# STAGING TARGET FOR THE GITHUB PAGES MIGRATION (see README "Forecast data
+# hosting" / production readiness report). Netlify remains the live
+# production site (myggprognos.se) until the Pages deployment below is
+# fully verified and the domain cutover is explicitly approved -- this
+# workflow only builds and publishes to the *temporary* Pages URL in the
+# meantime, so it's safe to iterate on without affecting production.
+#
+# Deliberately triggers ONLY on frontend/** changes -- NOT on
+# data/generated/** (that used to also be a trigger, back when this
+# workflow bundled the generated forecast data into the build; now that
+# the frontend fetches forecast data live from Cloudflare R2 at runtime
+# (VITE_FORECAST_DATA_BASE), a forecast update must never cause a Pages
+# deployment, so forecast.yml's every-6-hours commits no longer touch this
+# workflow at all.
 name: Deploy Pages
 
 on:
@@ -12,7 +19,6 @@ on:
     branches: [main]
     paths:
       - "frontend/**"
-      - "data/generated/**"
   workflow_dispatch:
 
 permissions:
@@ -41,12 +47,22 @@ jobs:
 
       - run: npm run build
         working-directory: frontend
+        env:
+          # Repo Variable (Settings > Secrets and variables > Actions >
+          # Variables -- NOT Secrets, this is just a public URL), set once
+          # the Cloudflare R2 forecast-data bucket exists (see production
+          # readiness report). Empty/unset falls back to the relative
+          # "data/latest" path bundled below, same as before this migration.
+          VITE_FORECAST_DATA_BASE: ${{ vars.FORECAST_DATA_BASE_URL }}
 
-      # `npm run build` already copies frontend/public/data/latest (the
-      # small committed sample dataset) into dist/data/latest. If a real
-      # full-grid forecast has been generated, overwrite it with that --
-      # so Pages deployment never fails solely due to missing forecast
-      # data, and always ships the freshest available data.
+      # FALLBACK ONLY, for as long as VITE_FORECAST_DATA_BASE above is
+      # unset: `npm run build` already copies frontend/public/data/latest
+      # (the small committed sample dataset) into dist/data/latest; if a
+      # real full-grid forecast has been generated, overwrite it with that
+      # so a fallback Pages deployment never ships only sample data. Once
+      # FORECAST_DATA_BASE_URL is set, the frontend fetches live from R2
+      # instead and never requests this bundled copy at all -- kept here
+      # only so Pages still works if R2 is ever unreachable at build time.
       - name: Bundle forecast data with the site
         run: |
           if [ -f "data/generated/latest/manifest.json" ]; then
