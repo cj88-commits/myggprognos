@@ -219,6 +219,43 @@ def write_manifest(
     return path
 
 
+def prune_stale_output(out_dir: Path, daily_files: list[str], hourly_files: list[str]) -> list[str]:
+    """Delete daily/ and hourly/ files (plus their .hash sidecars) that fall
+    outside the window the just-written manifest actually references.
+
+    `write_daily_file`/`write_hourly_file` only ever add files -- nothing
+    upstream ever removed the ones a rolling forecast window has since moved
+    past, so every date/hour this pipeline has ever produced was
+    accumulating on disk (and, historically, in git) forever. The active
+    window is derived directly from `daily_files`/`hourly_files` (the same
+    lists just passed to `write_manifest`) rather than a hardcoded day count,
+    so this stays correct if FORECAST_DAYS/HOURLY_HORIZON_HOURS ever change.
+
+    series/<shard>.json.gz and cells.json.gz are deliberately never touched
+    here: series shards hold each cell's full historical daily+hourly
+    series by design (see write_series_shards), not a rolling window, and
+    cells.json.gz has no date-keyed siblings to accumulate.
+    """
+    keep = set(daily_files) | set(hourly_files)
+    removed: list[str] = []
+    for subdir in ("daily", "hourly"):
+        dir_path = out_dir / subdir
+        if not dir_path.exists():
+            continue
+        for file_path in sorted(dir_path.glob("*.json.gz")):
+            rel_path = f"{subdir}/{file_path.name}"
+            if rel_path in keep:
+                continue
+            file_path.unlink()
+            hash_path = file_path.with_suffix(file_path.suffix + ".hash")
+            if hash_path.exists():
+                hash_path.unlink()
+            removed.append(rel_path)
+    if removed:
+        logger.info("Pruned %d stale forecast file(s) outside the active window", len(removed))
+    return removed
+
+
 def load_previous_manifest(out_dir: Path) -> dict | None:
     path = out_dir / "manifest.json"
     if not path.exists():

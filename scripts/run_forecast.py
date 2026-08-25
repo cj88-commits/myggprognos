@@ -85,7 +85,7 @@ def main() -> None:
         sys.exit(1)
 
     print(f"OK: {result['cell_count']} cells, {len(result['daily_files'])} daily files, "
-          f"{len(result['hourly_files'])} hourly files")
+          f"{len(result['hourly_files'])} hourly files, {len(result['pruned_files'])} stale files pruned")
     if result["warnings"]:
         print("Warnings:")
         for w in result["warnings"]:

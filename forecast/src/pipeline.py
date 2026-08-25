@@ -48,6 +48,7 @@ from model import compute_score, risk_category
 from output import (
     OutputValidationError,
     load_previous_manifest,
+    prune_stale_output,
     run_sanity_checks,
     write_cells_file,
     write_daily_file,
@@ -540,11 +541,14 @@ def run_pipeline(
         build_sha=_resolve_build_sha(),
     )
 
+    pruned_files = prune_stale_output(output_dir, daily_files, hourly_files)
+
     logger.info("Pipeline complete: %d cells, %d daily files, %d hourly files", len(cells), len(daily_files), len(hourly_files))
     return {
         "cell_count": len(cells),
         "daily_files": daily_files,
         "hourly_files": hourly_files,
+        "pruned_files": pruned_files,
         "warnings": warnings,
         "manifest_path": str(manifest_path),
     }

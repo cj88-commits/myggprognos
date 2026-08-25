@@ -7,10 +7,13 @@ import pytest
 from grid import generate_sample_grid
 from output import (
     OutputValidationError,
+    prune_stale_output,
     run_sanity_checks,
     write_cells_file,
     write_daily_file,
+    write_hourly_file,
     write_manifest,
+    write_series_shards,
 )
 from static_features import generate_placeholder_static_features
 
@@ -121,3 +124,64 @@ def test_manifest_written_as_valid_json(tmp_path):
     manifest = json.loads(path.read_text(encoding="utf-8"))
     assert manifest["cell_count"] == 5
     assert manifest["model_version"]
+
+
+def test_prune_stale_output_removes_files_outside_active_window(tmp_path):
+    cells = generate_sample_grid()
+    records = [_valid_daily_record(c.cell_id) for c in cells]
+
+    # One stale date/hour from a previous run's window, plus one current.
+    write_daily_file("2026-07-01", records, tmp_path)
+    write_daily_file("2026-07-29", records, tmp_path)
+    write_hourly_file("2026-07-01T06", records, tmp_path)
+    write_hourly_file("2026-07-29T06", records, tmp_path)
+
+    removed = prune_stale_output(
+        tmp_path,
+        daily_files=["daily/2026-07-29.json.gz"],
+        hourly_files=["hourly/2026-07-29T06.json.gz"],
+    )
+
+    assert sorted(removed) == ["daily/2026-07-01.json.gz", "hourly/2026-07-01T06.json.gz"]
+    assert not (tmp_path / "daily" / "2026-07-01.json.gz").exists()
+    assert not (tmp_path / "daily" / "2026-07-01.json.gz.hash").exists()
+    assert not (tmp_path / "hourly" / "2026-07-01T06.json.gz").exists()
+    assert (tmp_path / "daily" / "2026-07-29.json.gz").exists()
+    assert (tmp_path / "hourly" / "2026-07-29T06.json.gz").exists()
+
+
+def test_prune_stale_output_keeps_everything_in_the_active_window(tmp_path):
+    cells = generate_sample_grid()
+    records = [_valid_daily_record(c.cell_id) for c in cells]
+    write_daily_file("2026-07-29", records, tmp_path)
+    write_hourly_file("2026-07-29T06", records, tmp_path)
+
+    removed = prune_stale_output(
+        tmp_path,
+        daily_files=["daily/2026-07-29.json.gz"],
+        hourly_files=["hourly/2026-07-29T06.json.gz"],
+    )
+
+    assert removed == []
+    assert (tmp_path / "daily" / "2026-07-29.json.gz").exists()
+    assert (tmp_path / "hourly" / "2026-07-29T06.json.gz").exists()
+
+
+def test_prune_stale_output_never_touches_series_shards_or_cells_file(tmp_path):
+    cells = generate_sample_grid()
+    static_map = {c.cell_id: generate_placeholder_static_features(c) for c in cells}
+    write_cells_file(cells, static_map, tmp_path)
+    series_by_cell = {c.cell_id: {"daily": [], "hourly": []} for c in cells}
+    write_series_shards(series_by_cell, tmp_path, shard_count=4)
+
+    removed = prune_stale_output(tmp_path, daily_files=[], hourly_files=[])
+
+    assert removed == []
+    assert (tmp_path / "cells.json.gz").exists()
+    for shard_index in range(4):
+        assert (tmp_path / "series" / f"{shard_index}.json.gz").exists()
+
+
+def test_prune_stale_output_no_op_when_directories_missing(tmp_path):
+    removed = prune_stale_output(tmp_path, daily_files=["daily/2026-07-29.json.gz"], hourly_files=[])
+    assert removed == []
