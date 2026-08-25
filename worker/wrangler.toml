@@ -10,16 +10,20 @@ database_name = "myggprognos-reports"
 database_id = "ab6e5475-646e-402e-ab63-b02e6af48e6c"
 
 [vars]
-# Comma-separated list of origins allowed to call this API. Netlify
-# (https://zesty-pony-0b7626.netlify.app -- the actual auto-generated
-# Netlify subdomain currently in use; update this if/when a custom domain
-# is pointed at the site) is the production frontend; the GitHub Pages
-# origin is kept as a legacy fallback (see deploy-pages.yml) and localhost
-# covers dev/preview ports. NOTE: this is a live [vars] value read by
-# cors.ts at request time -- pushing this change requires a `wrangler
-# deploy` (or `npm run deploy` in worker/) to take effect, since Cloudflare
-# Workers vars aren't redeployed by the GitHub/Netlify pipelines.
-ALLOWED_ORIGINS = "https://zesty-pony-0b7626.netlify.app,https://myggprognos.github.io,http://localhost:5173,http://localhost:4173"
+# Comma-separated list of origins allowed to call this API. Netlify is the
+# production frontend -- https://myggprognos.netlify.app is the confirmed
+# live site (serves fresh forecast data, verified 2026-08-25);
+# https://zesty-pony-0b7626.netlify.app is an earlier auto-generated
+# Netlify subdomain seen during migration testing, kept here too until
+# it's confirmed unused (safe either way, this only widens who's allowed
+# to call the API, matching the two known Netlify origins for this repo).
+# The GitHub Pages origin is kept as a legacy fallback (see
+# deploy-pages.yml) and localhost covers dev/preview ports. NOTE: this is
+# a live [vars] value read by cors.ts at request time -- pushing this
+# change requires a `wrangler deploy` (or `npm run deploy` in worker/) to
+# take effect, since Cloudflare Workers vars aren't redeployed by the
+# GitHub/Netlify pipelines.
+ALLOWED_ORIGINS = "https://myggprognos.netlify.app,https://zesty-pony-0b7626.netlify.app,https://myggprognos.github.io,http://localhost:5173,http://localhost:4173"
 # Non-secret salt for hashing submitter IPs for rate-limiting only; for
 # production prefer `wrangler secret put REPORT_HASH_SALT` instead of
 # committing a real salt here.
