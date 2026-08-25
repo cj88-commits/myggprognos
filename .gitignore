@@ -71,6 +71,12 @@ data/generated/diagnostics/historical/
 .env.local
 *.local
 
+# D1 export/backup dumps (e.g. `wrangler d1 export`) -- may contain
+# production report data, never sensible to commit regardless of where
+# one is generated.
+*-backup.sql
+d1-backup/
+
 # Editor / OS
 .DS_Store
 .vscode/
