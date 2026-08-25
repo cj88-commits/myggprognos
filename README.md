@@ -171,6 +171,12 @@ Cloudflare Workers + D1 free tiers are generous; both weather sources are free a
 
 ### Data flow
 
+**Migration in progress (see "Forecast data hosting" below):** the description below is the architecture as
+it stands *today* (forecast data still committed to git, still bundled into the Netlify build). A migration
+to Cloudflare R2 + GitHub Pages is underway to decouple forecast updates from frontend deploys entirely;
+until it's validated and the production domain cutover is explicitly approved, Netlify stays the live
+production site exactly as described here.
+
 1. `forecast.yml` runs the Python pipeline every 6 hours: fetch weather (SMHI, see "Weather data source"
    below) → compute features →
    score with the rule-based model → write compact gzip JSON under `data/generated/latest/` → commit to
@@ -182,10 +188,55 @@ Cloudflare Workers + D1 free tiers are generous; both weather sources are free a
    `frontend/`, so without this step Netlify would only ever ship the small sample dataset committed at
    `frontend/public/data/latest/`. `deploy-pages.yml` also still runs on the same trigger as a legacy
    fallback publish target (see the note at the top of that workflow); it does not feed Netlify anything.
+
+   **Important cost consequence:** Netlify has no path filter, so this means every push to `main` -- not
+   just frontend changes, ANY commit, including the forecast pipeline's own -- triggers a full paid
+   production deploy. See "Forecast data hosting" below for the fix in progress.
 3. The frontend fetches `manifest.json`, then only the specific `daily/*.json.gz` / `hourly/*.json.gz` /
    `series/*.json.gz` files needed for the current view (never the whole dataset at once).
 4. User reports go straight from the frontend to the Cloudflare Worker → D1, independent of the forecast
    pipeline. The frontend remains fully usable (map, forecast, charts) even if the Worker is unreachable.
+
+### Forecast data hosting (Cloudflare R2 migration)
+
+Forecast delivery data being committed to git and bundled into every frontend build is the root cause of
+two problems: (1) every 6-hourly forecast run triggers a full Netlify production deploy (no path filter
+distinguishes a data-only push from a code push), and (2) `data/generated/latest/daily/` and `hourly/`
+accumulated every date/hour the pipeline had ever produced, forever -- nothing pruned files that fell
+outside the manifest's own rolling window, until the fix below.
+
+**Status:** code is in place; live Cloudflare provisioning and validation are not yet done. Until then,
+everything below runs *alongside* the existing git-commit path (both active in parallel), not instead of it
+-- see each script/workflow step's own comments for the exact gating.
+
+- **Retention fix** (`forecast/src/output.py::prune_stale_output`): after every successful publish, deletes
+  `daily/`/`hourly/` files no longer referenced by the manifest's `daily_files`/`hourly_files` lists.
+  `series/<shard>.json.gz` and `cells.json.gz` are deliberately never pruned -- series shards hold each
+  cell's full historical series by design, not a rolling window.
+- **Delivery data → R2** (`scripts/publish_forecast_data.py`): uploads `data/generated/latest/` (post-prune)
+  to a public R2 bucket, mirroring the same active-window pruning remotely (deletes stale R2 objects too, so
+  the bucket can't silently regrow the same unbounded-storage problem). Skips re-uploading unchanged files
+  via a content-hash comparison against each object's stored metadata.
+- **Weather-history cache → R2** (`scripts/weather_cache_r2.py`): moves `weather_history_cache.json.gz`
+  (pipeline STATE -- a self-bounded rolling window of already-fetched observed weather, not frontend delivery
+  data) to a *separate*, non-public R2 bucket, replacing the git-commit-every-10-minutes mid-run checkpoint.
+  GitHub Actions cache was considered and rejected: it has no reliable overwrite semantics for a value that
+  must be updated every single run.
+- **Frontend** (`frontend/src/lib/api.ts`): `VITE_FORECAST_DATA_BASE` (build-time env var) points the
+  frontend at the R2 bucket's public URL instead of the relative, bundled `data/latest` path. Unset by
+  default, so every current deploy target keeps working exactly as before with zero config changes.
+- **Cache-Control:** `manifest.json` is `no-cache` (always revalidated, cheap via ETag) since it changes
+  every run. Everything else uses a moderate `max-age=900, must-revalidate` (15 min) -- deliberately **not**
+  `immutable`/year-long caching despite date/shard-versioned-looking filenames: `output.py`'s own
+  content-hash-skip logic proves a given date/hour/shard's content gets rewritten in place while still
+  within the active forecast window (a rolling forecast's day+3 prediction today gets refined by tomorrow's
+  run, same filename/URL), so caching it as immutable would leave users stuck on a stale current forecast.
+
+Once R2 is provisioned, secrets/variables added, and validated across several real scheduled runs (forecast
+timestamp changes, new data appears in R2, but *no* Netlify deploy / Pages deploy / git commit happens), the
+remaining cleanup -- removing the git-commit-of-generated-data step, `forecast.yml`'s unconditional
+`gh workflow run deploy-pages.yml` trigger, and the `.hash`/generated-data git history -- is a separate,
+deliberate follow-up, not done automatically as part of standing this up.
 
 ### Generated output format
 
@@ -443,8 +494,13 @@ subdomain still resolves and is kept as a fallback/testing origin in the Worker'
 ### Historical forecast archive & automatic cleanup
 
 Chosen MVP strategy (see spec section 18): `data/generated/latest` is committed and **overwritten in place**
-every run — it is never versioned by date in git, so the working tree never grows unbounded and no manual
-cleanup step is needed. The **full output of every run is separately retained as a 90-day GitHub Actions
+every run — it is never versioned by date in git. In practice this only held for files whose *name* stays
+the same run to run (`manifest.json`, `cells.json.gz`); `daily/<date>.json.gz` and `hourly/<timestamp>.json.gz`
+are named per date/hour, so nothing about "overwrite in place" ever removed the ones that rolled out of the
+manifest's window -- every date/hour the pipeline had ever produced accumulated forever (confirmed: ~900MB
+and growing ~31MB/day before the fix). `prune_stale_output` (see "Forecast data hosting" above) now deletes
+exactly those stale files after each publish, so the working tree genuinely stays bounded to the active
+window. The **full output of every run is separately retained as a 90-day GitHub Actions
 artifact** via `actions/upload-artifact`, which GitHub itself expires automatically (also no manual step).
 The pipeline's on-disk weather cache (`data/cache/weather`, see `forecast/src/weather.py::DiskCache`) only
 ever exists within a single ephemeral CI job — it isn't persisted or restored between runs, so it can't grow
