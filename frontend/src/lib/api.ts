@@ -1,12 +1,22 @@
 import { fetchJsonGz } from "./fetchJsonGz";
 import type { CellRecord, DailyRecord, HourlyRecord, Manifest, PlaceRecord } from "../types/forecast";
 
-// Generated forecast assets are published alongside the built frontend
-// under this relative path (see .github/workflows/deploy-pages.yml and
-// scripts/run_forecast.py). Relative (not root-absolute) so it resolves
-// correctly whether the app is served from a domain root or a GitHub
-// Pages project subpath.
-const DATA_BASE = "data/latest";
+// Base URL forecast data is fetched from. Defaults to the relative,
+// bundled-into-the-build path (see .github/workflows/deploy-pages.yml and
+// netlify.toml) so any deploy target that hasn't set VITE_FORECAST_DATA_BASE
+// yet keeps working exactly as before -- relative (not root-absolute) so it
+// resolves correctly whether the app is served from a domain root or a
+// GitHub Pages project subpath.
+//
+// Set VITE_FORECAST_DATA_BASE (frontend/.env, or the environment a build is
+// run in) to an absolute URL to instead fetch live from the Cloudflare R2
+// forecast-data bucket, decoupling forecast updates from frontend deploys
+// entirely -- see README "Forecast data hosting". Trailing slash stripped
+// so both "https://data.example.com" and "https://data.example.com/" work.
+const DATA_BASE = ((import.meta.env.VITE_FORECAST_DATA_BASE as string | undefined) || "data/latest").replace(
+  /\/$/,
+  ""
+);
 
 let manifestPromise: Promise<Manifest> | null = null;
 
