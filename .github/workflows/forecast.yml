@@ -135,17 +135,18 @@ jobs:
       # for a value that must be updated every single run. Gated on secret
       # presence so this step -- and every other R2 step below -- is a
       # no-op skip, not a failure, until CLOUDFLARE_ACCOUNT_ID/R2_ACCESS_KEY_ID/
-      # R2_SECRET_ACCESS_KEY/R2_STATE_BUCKET are added to repo secrets (see
+      # R2_SECRET_ACCESS_KEY (repo Secrets) and R2_STATE_BUCKET (repo
+      # Variable -- not sensitive, just a bucket name) are added (see
       # production readiness report). The existing git-committed cache file
       # (checked out above) is still used as a fallback either way, so this
       # is purely additive during the migration.
       - name: Restore weather-history cache from R2
-        if: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' && secrets.R2_STATE_BUCKET != '' }}
+        if: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' && vars.R2_STATE_BUCKET != '' }}
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_STATE_BUCKET: ${{ secrets.R2_STATE_BUCKET }}
+          R2_STATE_BUCKET: ${{ vars.R2_STATE_BUCKET }}
         run: python scripts/weather_cache_r2.py download --path data/generated/weather_history_cache.json.gz --verbose
 
       - name: Run forecast pipeline
@@ -169,7 +170,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_STATE_BUCKET: ${{ secrets.R2_STATE_BUCKET }}
+          R2_STATE_BUCKET: ${{ vars.R2_STATE_BUCKET }}
         run: |
           # The pipeline checkpoints its weather-history cache to local disk
           # every CACHE_CHECKPOINT_CHUNK_CELLS cells (see history_cache.py),
@@ -247,12 +248,12 @@ jobs:
       # migration window). Additive, gated on secret presence -- same
       # reasoning as "Restore weather-history cache from R2" above.
       - name: Save weather-history cache to R2
-        if: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' && secrets.R2_STATE_BUCKET != '' }}
+        if: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' && vars.R2_STATE_BUCKET != '' }}
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_STATE_BUCKET: ${{ secrets.R2_STATE_BUCKET }}
+          R2_STATE_BUCKET: ${{ vars.R2_STATE_BUCKET }}
         run: python scripts/weather_cache_r2.py upload --path data/generated/weather_history_cache.json.gz --verbose
 
       # MIGRATION (see README "Forecast data hosting"): publishes the
@@ -264,12 +265,12 @@ jobs:
       # fails the whole job (no `|| true`): a forecast generated locally
       # but not published to R2 must never be reported as a successful run.
       - name: Publish forecast data to R2
-        if: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' && secrets.R2_DATA_BUCKET != '' }}
+        if: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' && vars.R2_DATA_BUCKET != '' }}
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_DATA_BUCKET: ${{ secrets.R2_DATA_BUCKET }}
+          R2_DATA_BUCKET: ${{ vars.R2_DATA_BUCKET }}
         run: python scripts/publish_forecast_data.py --verbose
 
       - name: Check for changes
