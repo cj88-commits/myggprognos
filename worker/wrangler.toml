@@ -7,7 +7,11 @@ compatibility_date = "2024-11-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "myggprognos-reports"
-database_id = "ab6e5475-646e-402e-ab63-b02e6af48e6c"
+# Points at the dedicated myggprognos Cloudflare account's D1 database
+# (migrated from the personal account's ab6e5475-646e-402e-ab63-b02e6af48e6c,
+# same name, different account -- the old database is untouched and kept as
+# rollback protection until this account is fully verified in production).
+database_id = "7e6f9aaf-8e47-4435-b468-9f879933d76e"
 
 [vars]
 # Comma-separated list of origins allowed to call this API. Netlify is the
