@@ -129,6 +129,25 @@ jobs:
         if: steps.smhi-index-cache.outputs.cache-hit != 'true'
         run: python scripts/prepare_smhi_grid_index.py
 
+      # MIGRATION (see README "Forecast data hosting"): moves the weather-
+      # history cache off git-commit-based checkpointing and onto Cloudflare
+      # R2, since GitHub Actions cache has no reliable overwrite semantics
+      # for a value that must be updated every single run. Gated on secret
+      # presence so this step -- and every other R2 step below -- is a
+      # no-op skip, not a failure, until CLOUDFLARE_ACCOUNT_ID/R2_ACCESS_KEY_ID/
+      # R2_SECRET_ACCESS_KEY/R2_STATE_BUCKET are added to repo secrets (see
+      # production readiness report). The existing git-committed cache file
+      # (checked out above) is still used as a fallback either way, so this
+      # is purely additive during the migration.
+      - name: Restore weather-history cache from R2
+        if: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' && secrets.R2_STATE_BUCKET != '' }}
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_STATE_BUCKET: ${{ secrets.R2_STATE_BUCKET }}
+        run: python scripts/weather_cache_r2.py download --path data/generated/weather_history_cache.json.gz --verbose
+
       - name: Run forecast pipeline
         id: run
         # NOTE: do not set OPEN_METEO_BASE_URL here. This previously read
@@ -146,6 +165,11 @@ jobs:
         # almost everywhere in that run's output. OPEN_METEO_ARCHIVE_URL
         # has never had an env override here and has always worked
         # correctly via config.py's hardcoded default -- do the same here.
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_STATE_BUCKET: ${{ secrets.R2_STATE_BUCKET }}
         run: |
           # The pipeline checkpoints its weather-history cache to local disk
           # every CACHE_CHECKPOINT_CHUNK_CELLS cells (see history_cache.py),
@@ -160,6 +184,18 @@ jobs:
             while true; do
               sleep 600
               if [ -f data/generated/weather_history_cache.json.gz ]; then
+                # MIGRATION: also checkpoint to R2 (if configured) alongside
+                # the existing git-commit checkpoint below -- additive, not a
+                # replacement, until the R2 path is verified across several
+                # real runs (see README "Forecast data hosting"). A failed R2
+                # checkpoint only logs and retries next interval, same
+                # tolerance as the git push already has, since the git path
+                # remains the authoritative safety net during migration.
+                if [ -n "$R2_ACCESS_KEY_ID" ]; then
+                  python scripts/weather_cache_r2.py upload --path data/generated/weather_history_cache.json.gz \
+                    || echo "R2 checkpoint upload failed, will retry next interval"
+                fi
+
                 git add data/generated/weather_history_cache.json.gz
                 if ! git diff --cached --quiet; then
                   git config user.name "mosquito-risk-bot"
@@ -195,6 +231,46 @@ jobs:
           else
             python scripts/run_forecast.py --verbose $RATIO_FLAG
           fi
+
+      - name: Report generated data size
+        if: always()
+        run: |
+          echo "data/generated/latest (delivery data, post-prune):"
+          du -sh data/generated/latest 2>/dev/null || echo "  (missing)"
+          echo "data/generated/weather_history_cache.json.gz (pipeline state):"
+          du -sh data/generated/weather_history_cache.json.gz 2>/dev/null || echo "  (missing)"
+
+      # MIGRATION (see README "Forecast data hosting"): final, authoritative
+      # save of the weather-history cache to R2 after a successful run,
+      # alongside the existing "Commit and push updated forecast" step
+      # below (which still commits this same file to git during the
+      # migration window). Additive, gated on secret presence -- same
+      # reasoning as "Restore weather-history cache from R2" above.
+      - name: Save weather-history cache to R2
+        if: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' && secrets.R2_STATE_BUCKET != '' }}
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_STATE_BUCKET: ${{ secrets.R2_STATE_BUCKET }}
+        run: python scripts/weather_cache_r2.py upload --path data/generated/weather_history_cache.json.gz --verbose
+
+      # MIGRATION (see README "Forecast data hosting"): publishes the
+      # active-window forecast output to the public R2 delivery bucket so
+      # the frontend can fetch it directly, independent of any Netlify/
+      # Pages/git-commit deploy. Additive alongside the existing git-commit
+      # path below until validated across several real scheduled runs --
+      # see production readiness report Phase 8-10. A failed upload here
+      # fails the whole job (no `|| true`): a forecast generated locally
+      # but not published to R2 must never be reported as a successful run.
+      - name: Publish forecast data to R2
+        if: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' && secrets.R2_DATA_BUCKET != '' }}
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_DATA_BUCKET: ${{ secrets.R2_DATA_BUCKET }}
+        run: python scripts/publish_forecast_data.py --verbose
 
       - name: Check for changes
         id: changes
