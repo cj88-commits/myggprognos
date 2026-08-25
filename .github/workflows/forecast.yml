@@ -41,6 +41,27 @@ jobs:
     # for the retained open-meteo fallback path (--provider open-meteo),
     # not because SMHI runs are expected to need it.
     timeout-minutes: 360
+    # Explicit three-way migration switch (repo Variable, see README
+    # "Forecast data hosting"). Defaults to "git" (today's behaviour,
+    # unaffected) when unset, so adding R2 secrets alone changes nothing
+    # until this variable is deliberately set:
+    #   git        - forecast data + weather-history cache committed/pushed
+    #                to `main` exactly as before. No R2 steps run.
+    #   r2-test    - BOTH paths run: R2 publish/checkpoint AND the legacy
+    #                git commit/push, so R2 can be proven reliable while
+    #                git stays the actual production-serving path (nothing
+    #                downstream -- Netlify, Pages' fallback bundling --
+    #                depends on R2 yet). Use this to validate R2 end-to-end.
+    #   r2-cutover - R2 only. No forecast-data git commit, no weather-
+    #                history checkpoint commit, and forecast.yml no longer
+    #                dispatches deploy-pages.yml. A rare data/static-only
+    #                change (grid/boundary regeneration) still commits/
+    #                pushes on its own -- that's unrelated config, not
+    #                per-run forecast delivery data -- so an occasional
+    #                Netlify deploy from THAT is expected even in this
+    #                mode, just not from routine 6-hourly forecast runs.
+    env:
+      FORECAST_STORAGE_MODE: ${{ vars.FORECAST_STORAGE_MODE || 'git' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -132,16 +153,17 @@ jobs:
       # MIGRATION (see README "Forecast data hosting"): moves the weather-
       # history cache off git-commit-based checkpointing and onto Cloudflare
       # R2, since GitHub Actions cache has no reliable overwrite semantics
-      # for a value that must be updated every single run. Gated on secret
-      # presence so this step -- and every other R2 step below -- is a
-      # no-op skip, not a failure, until CLOUDFLARE_ACCOUNT_ID/R2_ACCESS_KEY_ID/
-      # R2_SECRET_ACCESS_KEY (repo Secrets) and R2_STATE_BUCKET (repo
-      # Variable -- not sensitive, just a bucket name) are added (see
-      # production readiness report). The existing git-committed cache file
-      # (checked out above) is still used as a fallback either way, so this
-      # is purely additive during the migration.
+      # for a value that must be updated every single run. Runs in
+      # r2-test/r2-cutover mode only (see FORECAST_STORAGE_MODE above); a
+      # missing R2 object is a normal cold-start (handled inside the
+      # script), but missing/wrong CREDENTIALS while this mode is
+      # deliberately selected fails the step loudly rather than silently
+      # falling back -- the mode is an explicit choice, not a maybe. The
+      # git-committed cache file (checked out above) still sits on disk
+      # either way as of this run's checkout, so a first R2 run (empty
+      # bucket) naturally starts from that rather than from nothing.
       - name: Restore weather-history cache from R2
-        if: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' && vars.R2_STATE_BUCKET != '' }}
+        if: ${{ env.FORECAST_STORAGE_MODE != 'git' }}
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -185,36 +207,41 @@ jobs:
             while true; do
               sleep 600
               if [ -f data/generated/weather_history_cache.json.gz ]; then
-                # MIGRATION: also checkpoint to R2 (if configured) alongside
-                # the existing git-commit checkpoint below -- additive, not a
-                # replacement, until the R2 path is verified across several
-                # real runs (see README "Forecast data hosting"). A failed R2
-                # checkpoint only logs and retries next interval, same
-                # tolerance as the git push already has, since the git path
-                # remains the authoritative safety net during migration.
-                if [ -n "$R2_ACCESS_KEY_ID" ]; then
+                # MIGRATION (see README "Forecast data hosting" / job-level
+                # FORECAST_STORAGE_MODE comment above): r2-test/r2-cutover
+                # also checkpoint to R2. Tolerant of failure (log + retry
+                # next interval) same as the git push below -- this is a
+                # best-effort mid-run safety net either way, not the
+                # authoritative save (that's the "Save weather-history
+                # cache to R2" step after this one finishes).
+                if [ "$FORECAST_STORAGE_MODE" != "git" ]; then
                   python scripts/weather_cache_r2.py upload --path data/generated/weather_history_cache.json.gz \
                     || echo "R2 checkpoint upload failed, will retry next interval"
                 fi
 
-                git add data/generated/weather_history_cache.json.gz
-                if ! git diff --cached --quiet; then
-                  git config user.name "mosquito-risk-bot"
-                  git config user.email "actions@users.noreply.github.com"
-                  git commit -m "Checkpoint weather history cache (run in progress)"
-                  git fetch origin main
-                  # --autostash: grid.json/cell_geometry.json.gz can be sitting
-                  # uncommitted in the working tree for the whole run (see the
-                  # "Prepare grid"/"Prepare cell geometry" steps above -- they're
-                  # deliberately not committed until the final step, so a
-                  # mismatched painted layer never gets deployed ahead of its
-                  # matching forecast data). Plain `git rebase` refuses to start
-                  # at all with ANY uncommitted tracked-file changes present,
-                  # confirmed live ("cannot rebase: You have unstaged changes")
-                  # -- autostash tucks them aside for the rebase and restores
-                  # them after, whether it succeeds or is aborted below.
-                  git rebase --autostash origin/main || git rebase --abort
-                  git push origin HEAD:main || echo "checkpoint push failed, will retry next interval"
+                # git/r2-test mode only -- r2-cutover makes ZERO commits to
+                # main for weather-history state, by design (requirement:
+                # checkpoint commits must stop once R2 mode is cut over).
+                if [ "$FORECAST_STORAGE_MODE" != "r2-cutover" ]; then
+                  git add data/generated/weather_history_cache.json.gz
+                  if ! git diff --cached --quiet; then
+                    git config user.name "mosquito-risk-bot"
+                    git config user.email "actions@users.noreply.github.com"
+                    git commit -m "Checkpoint weather history cache (run in progress)"
+                    git fetch origin main
+                    # --autostash: grid.json/cell_geometry.json.gz can be sitting
+                    # uncommitted in the working tree for the whole run (see the
+                    # "Prepare grid"/"Prepare cell geometry" steps above -- they're
+                    # deliberately not committed until the final step, so a
+                    # mismatched painted layer never gets deployed ahead of its
+                    # matching forecast data). Plain `git rebase` refuses to start
+                    # at all with ANY uncommitted tracked-file changes present,
+                    # confirmed live ("cannot rebase: You have unstaged changes")
+                    # -- autostash tucks them aside for the rebase and restores
+                    # them after, whether it succeeds or is aborted below.
+                    git rebase --autostash origin/main || git rebase --abort
+                    git push origin HEAD:main || echo "checkpoint push failed, will retry next interval"
+                  fi
                 fi
               fi
             done
@@ -242,13 +269,12 @@ jobs:
           du -sh data/generated/weather_history_cache.json.gz 2>/dev/null || echo "  (missing)"
 
       # MIGRATION (see README "Forecast data hosting"): final, authoritative
-      # save of the weather-history cache to R2 after a successful run,
-      # alongside the existing "Commit and push updated forecast" step
-      # below (which still commits this same file to git during the
-      # migration window). Additive, gated on secret presence -- same
-      # reasoning as "Restore weather-history cache from R2" above.
+      # save of the weather-history cache to R2 after a successful run.
+      # Runs in r2-test/r2-cutover mode (see FORECAST_STORAGE_MODE above);
+      # in r2-test this happens alongside the still-active git commit
+      # below, in r2-cutover this is the ONLY persistence for this file.
       - name: Save weather-history cache to R2
-        if: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' && vars.R2_STATE_BUCKET != '' }}
+        if: ${{ env.FORECAST_STORAGE_MODE != 'git' }}
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -259,13 +285,14 @@ jobs:
       # MIGRATION (see README "Forecast data hosting"): publishes the
       # active-window forecast output to the public R2 delivery bucket so
       # the frontend can fetch it directly, independent of any Netlify/
-      # Pages/git-commit deploy. Additive alongside the existing git-commit
-      # path below until validated across several real scheduled runs --
-      # see production readiness report Phase 8-10. A failed upload here
-      # fails the whole job (no `|| true`): a forecast generated locally
-      # but not published to R2 must never be reported as a successful run.
+      # Pages/git-commit deploy. Runs in r2-test/r2-cutover mode (see
+      # FORECAST_STORAGE_MODE above) -- in r2-test alongside the still-
+      # active git commit below, in r2-cutover this (not git) is the
+      # authoritative publish. A failed upload here fails the whole job (no
+      # `|| true`): a forecast generated locally but not published to R2
+      # must never be reported as a successful run.
       - name: Publish forecast data to R2
-        if: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' && vars.R2_DATA_BUCKET != '' }}
+        if: ${{ env.FORECAST_STORAGE_MODE != 'git' }}
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -273,19 +300,41 @@ jobs:
           R2_DATA_BUCKET: ${{ vars.R2_DATA_BUCKET }}
         run: python scripts/publish_forecast_data.py --verbose
 
+      # Split static (grid/geometry -- rare, unrelated to per-run forecast
+      # delivery, and frontend/public/data/static/cell_geometry.json.gz
+      # MUST stay in git regardless of storage mode since Vite bundles it
+      # directly into the frontend build) from generated (the actual
+      # per-run forecast delivery data + weather-history cache -- the
+      # thing r2-cutover mode must stop pushing to `main` entirely).
+      # git status --porcelain rather than git add + git diff --cached, so
+      # checking one doesn't affect what the other reports.
       - name: Check for changes
         id: changes
         run: |
-          git add data/generated data/static frontend/public/data/static/cell_geometry.json.gz
-          if git diff --cached --quiet; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
+          if [ -n "$(git status --porcelain -- data/static frontend/public/data/static/cell_geometry.json.gz)" ]; then
+            echo "changed_static=true" >> "$GITHUB_OUTPUT"
           else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "changed_static=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "$(git status --porcelain -- data/generated)" ]; then
+            echo "changed_generated=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed_generated=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # git/r2-test mode: commits whatever changed (static and/or
+      # generated), same combined behaviour as before this migration.
+      # r2-cutover mode: NEVER stages data/generated -- even if it changed,
+      # it is deliberately excluded, so this step only ever fires (and only
+      # ever commits) for a data/static change in that mode. That is the
+      # "zero forecast-data git pushes in r2-cutover mode" requirement.
       - name: Commit and push updated forecast
-        if: steps.changes.outputs.changed == 'true'
+        if: ${{ steps.changes.outputs.changed_static == 'true' || (steps.changes.outputs.changed_generated == 'true' && env.FORECAST_STORAGE_MODE != 'r2-cutover') }}
         run: |
+          git add data/static frontend/public/data/static/cell_geometry.json.gz
+          if [ "$FORECAST_STORAGE_MODE" != "r2-cutover" ]; then
+            git add data/generated
+          fi
           git config user.name "mosquito-risk-bot"
           git config user.email "actions@users.noreply.github.com"
           git commit -m "Update forecast $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -302,8 +351,19 @@ jobs:
           path: data/generated/latest
           retention-days: 90
 
+      # git mode ONLY. In git mode, Pages' own build still bundles
+      # data/generated/latest as a fallback (see deploy-pages.yml), so it
+      # genuinely needs a fresh build to pick up new forecast data. In
+      # r2-test/r2-cutover mode this must NOT fire -- the whole point being
+      # validated is that Pages (once pointed at FORECAST_DATA_BASE_URL)
+      # sees new forecast data purely by fetching it live from R2, with NO
+      # redeploy at all. This is the exact mechanism that used to make "a
+      # forecast run triggers Pages" true regardless of deploy-pages.yml's
+      # own push-path filter -- workflow_dispatch (used here) bypasses path
+      # filtering entirely, so gating it on mode (not just removing it) is
+      # what actually stops it.
       - name: Trigger Pages deployment
-        if: steps.changes.outputs.changed == 'true'
+        if: ${{ env.FORECAST_STORAGE_MODE == 'git' && (steps.changes.outputs.changed_static == 'true' || steps.changes.outputs.changed_generated == 'true') }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run deploy-pages.yml --ref ${{ github.ref_name }}
