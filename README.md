@@ -435,6 +435,11 @@ and Netlify's own "auto-deploy on push to `main`" setting picks that commit up w
 API token. Netlify auto-detects `netlify.toml`; no manual dashboard change is needed unless the site's
 existing UI-configured base/publish directories differ from the values above.
 
+**Custom domain:** `https://myggprognos.se` is configured in Netlify as the site's custom domain (apex),
+with `https://www.myggprognos.se` set to redirect to it. The underlying `https://myggprognos.netlify.app`
+subdomain still resolves and is kept as a fallback/testing origin in the Worker's `ALLOWED_ORIGINS` (see
+"Cloudflare setup" below).
+
 ### Historical forecast archive & automatic cleanup
 
 Chosen MVP strategy (see spec section 18): `data/generated/latest` is committed and **overwritten in place**
@@ -632,10 +637,11 @@ resurrect any of this.
 
 `frontend/index.html` ships Swedish `<title>`/meta description, OpenGraph (`og:*`, `og:locale=sv_SE`),
 Twitter card meta, `<html lang="sv">`, and a canonical link; `frontend/public/robots.txt` and `sitemap.xml`
-point at the same domain. **The canonical/OG URLs use a placeholder domain, `https://www.myggprognos.se/`**
-— update `index.html`, `robots.txt`, and `sitemap.xml` if the real production domain differs. No `og:image`
-is set yet (would need a real 1200×630 PNG under `frontend/public/`); see the commented-out tag in
-`index.html` and [Future improvements](#future-improvements) below.
+point at the same domain. **The canonical/OG/sitemap URLs use the real production domain,
+`https://myggprognos.se/`** (the apex domain; `https://www.myggprognos.se` redirects to it, confirmed live
+2026-08-25) — update `index.html`, `robots.txt`, and `sitemap.xml` if the production domain ever changes
+again. No `og:image` is set yet (would need a real 1200×630 PNG under `frontend/public/`); see the
+commented-out tag in `index.html` and [Future improvements](#future-improvements) below.
 
 ## Future improvements
 

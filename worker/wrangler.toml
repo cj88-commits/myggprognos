@@ -14,20 +14,20 @@ database_name = "myggprognos-reports"
 database_id = "7e6f9aaf-8e47-4435-b468-9f879933d76e"
 
 [vars]
-# Comma-separated list of origins allowed to call this API. Netlify is the
-# production frontend -- https://myggprognos.netlify.app is the confirmed
-# live site (serves fresh forecast data, verified 2026-08-25);
-# https://zesty-pony-0b7626.netlify.app is an earlier auto-generated
-# Netlify subdomain seen during migration testing, kept here too until
-# it's confirmed unused (safe either way, this only widens who's allowed
-# to call the API, matching the two known Netlify origins for this repo).
-# The GitHub Pages origin is kept as a legacy fallback (see
+# Comma-separated list of origins allowed to call this API. https://myggprognos.se
+# is the canonical production domain (custom domain on Netlify, confirmed live
+# 2026-08-25; https://www.myggprognos.se redirects to it). https://myggprognos.netlify.app
+# is the underlying Netlify subdomain, kept as a fallback/testing origin now that
+# the custom domain is live. https://zesty-pony-0b7626.netlify.app is an earlier
+# auto-generated Netlify subdomain seen during migration testing, kept here too
+# until it's confirmed unused (safe either way, this only widens who's allowed to
+# call the API). The GitHub Pages origin is kept as a legacy fallback (see
 # deploy-pages.yml) and localhost covers dev/preview ports. NOTE: this is
 # a live [vars] value read by cors.ts at request time -- pushing this
 # change requires a `wrangler deploy` (or `npm run deploy` in worker/) to
 # take effect, since Cloudflare Workers vars aren't redeployed by the
 # GitHub/Netlify pipelines.
-ALLOWED_ORIGINS = "https://myggprognos.netlify.app,https://zesty-pony-0b7626.netlify.app,https://myggprognos.github.io,http://localhost:5173,http://localhost:4173"
+ALLOWED_ORIGINS = "https://myggprognos.se,https://myggprognos.netlify.app,https://zesty-pony-0b7626.netlify.app,https://myggprognos.github.io,http://localhost:5173,http://localhost:4173"
 # Non-secret salt for hashing submitter IPs for rate-limiting only; for
 # production prefer `wrangler secret put REPORT_HASH_SALT` instead of
 # committing a real salt here.
