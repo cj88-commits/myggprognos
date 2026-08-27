@@ -2,7 +2,11 @@ name: Forecast Pipeline
 
 on:
   schedule:
-    # Every 6 hours, matching FORECAST_UPDATE_INTERVAL_HOURS in forecast/src/config.py
+    # Every 6 hours, matching FORECAST_UPDATE_INTERVAL_HOURS in forecast/src/config.py.
+    # GitHub stopped firing this trigger entirely after 2026-08-25 (no runs of
+    # any kind -- not even queued/failed -- for the next four 6-hourly
+    # windows); re-committing this file is the documented workaround for a
+    # cron schedule GitHub has silently dropped.
     - cron: "0 */6 * * *"
   workflow_dispatch:
     inputs:
