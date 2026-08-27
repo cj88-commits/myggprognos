@@ -9,6 +9,7 @@ import { useCells, useDailyForDate, useLocationSeries, useManifest, usePlaces } 
 import { useI18n } from "./i18n";
 import { nearestCell, nearestPlace } from "./lib/api";
 import { clearFetchCache } from "./lib/fetchJsonGz";
+import { computeStaleness } from "./lib/freshness";
 import { finalRiskForActivity } from "./lib/riskModel";
 import { STOCKHOLM_TZ } from "./lib/time";
 import { DEFAULT_STATE, parseUrlState, serializeUrlState, type AppState } from "./lib/urlState";
@@ -220,9 +221,8 @@ export default function App() {
 
   const staleWarning = useMemo(() => {
     if (!manifest) return null;
-    const generatedAt = new Date(manifest.generated_at).getTime();
-    const ageHours = (Date.now() - generatedAt) / 3600000;
-    if (ageHours > 12) {
+    const { stale, ageHours } = computeStaleness(manifest.generated_at);
+    if (stale && ageHours !== null) {
       return t("status.stale", { hours: Math.round(ageHours) });
     }
     return null;
